@@ -14,6 +14,17 @@ Mientras corre, el bot responde en segundos (solo a tu chat):
 
 Primero responde qué modelos va a buscar y después el resultado. Los productos se definen en `config.json` → `products`. Con `"watch": true` también entran en la búsqueda automática; hoy solo el Duo.
 
+## Cómo comprar cuando llega el aviso (compra asistida)
+
+No se automatiza login, carrito ni pago, y no se guarda ningún dato sensible. El aviso llega en 2 mensajes:
+
+1. **Arriba:** modelo, tienda más cercana y link directo, con color y memoria ya elegidos (unlocked). En el iPhone abre la app Apple Store.
+2. **Abajo:** detalle de todos los modelos y tiendas con stock, cada uno con su link.
+
+Pasos: tocar el link → Add to Bag → Check Out → elegir **pickup** en la tienda del aviso → pagar con **Apple Pay**.
+
+Preparación (una vez): app Apple Store logueada, Apple Pay con la tarjeta, notificaciones de Telegram con sonido. Para practicar, mandale `prueba compra` al bot: simula un aviso con un 18 Pro en stock. Recorré el flujo hasta Apple Pay **sin confirmar**.
+
 ## Estructura
 
 - `services/apple_checker.py`: consulta Apple y filtra por distancia

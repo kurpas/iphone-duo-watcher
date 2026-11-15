@@ -47,45 +47,64 @@ def watched_parts() -> Dict[str, str]:
     return out
 
 
-def url_for(part: str) -> str:
+def buy_url(part: str) -> str:
+    """Direct link to the model with color/storage preselected (unlocked).
+    On iPhone it opens straight in the Apple Store app."""
     for p in PRODUCTS.values():
         if part in p["parts"]:
-            return p["url"]
+            slug = p.get("buy_slugs", {}).get(part)
+            return f"{p['url']}/{slug}" if slug else p["url"]
     return ""
 
 
 def format_found(items: List[apple_checker.Availability], parts: Dict[str, str]) -> str:
-    """Groups availability by model; lists nearest stores per model."""
+    """Groups availability by model; nearest stores + direct buy link per model."""
     n = CONFIG["stores_per_model_in_message"]
     by_part: "OrderedDict[str, list]" = OrderedDict((p, []) for p in parts)
     for a in items:
         by_part.setdefault(a.part, []).append(a)
 
     lines = ["✅ DISPONIBLE para pickup:"]
-    urls = []
     for part, stores in by_part.items():
         if not stores:
             continue
         stores.sort(key=lambda a: a.miles)
         shown = ", ".join(f"{a.store_name} ({a.miles:.0f} mi)" for a in stores[:n])
         more = f" y {len(stores) - n} más" if len(stores) > n else ""
-        lines.append(f"• {split_name(parts.get(part, part))}: {shown}{more}")
-        u = url_for(part)
-        if u and u not in urls:
-            urls.append(u)
+        lines.append(f"\n• {split_name(parts.get(part, part))}: {shown}{more}")
+        lines.append(f"  👉 {buy_url(part)}")
     missing = [split_name(parts[p]) for p, s in by_part.items() if not s and p in parts]
     if missing:
         lines.append("\n❌ Sin stock:")
         lines += [f"• {m}" for m in missing]
-    lines.append("")
-    lines += [f"Reservar: {u}" for u in urls]
     return "\n".join(lines)
+
+
+def format_headline(items: List[apple_checker.Availability], parts: Dict[str, str]) -> str:
+    """Short first message: what shows on the phone's lock screen. Nearest store wins."""
+    a = min(items, key=lambda x: x.miles)
+    quote = f" · {a.quote}" if a.quote else ""
+    return (
+        f"🚨 HAY STOCK: {split_name(parts.get(a.part, a.part))}\n"
+        f"📍 {a.store_name} ({a.miles:.0f} mi){quote}\n"
+        f"👉 {buy_url(a.part)}\n"
+        f"Elegí pickup en {a.store_name} y pagá con Apple Pay."
+    )
+
+
+def send_alert(items: List[apple_checker.Availability], parts: Dict[str, str], prefix: str = "") -> bool:
+    """Two messages: actionable headline first, full detail after."""
+    ok = notifier.notify(prefix + format_headline(items, parts))
+    if ok:
+        notifier.notify(format_found(items, parts))
+    return ok
 
 
 # ---------- Telegram commands ----------
 
 def help_text() -> str:
     opts = "\n".join(f"• busca {key} → {p['label']}" for key, p in PRODUCTS.items())
+    opts += "\n• prueba compra → simula un aviso de stock (con un 18 Pro) para practicar la compra"
     return f"Comandos:\n{opts}\n\nBusco solo pickup en {area()}."
 
 
@@ -114,8 +133,25 @@ def on_demand_search(key: str) -> None:
         notifier.reply(f"❌ No hay stock de ninguno en las {checked} tiendas.")
 
 
+def practice_alert() -> None:
+    """Sends a simulated stock alert using a model that's usually in stock (18 Pro)."""
+    parts = PRODUCTS["18"]["parts"]
+    items, checked, _ = apple_checker.check(CONFIG, parts)
+    if not items:
+        notifier.reply("No hay ningún 18 Pro en stock ahora para simular. Probá más tarde.")
+        return
+    send_alert(items, parts, prefix="🧪 PRUEBA (no es el Duo, NO pagues)\n")
+    notifier.reply(
+        "🧪 Practicá: tocá el link del primer mensaje, elegí la tienda para pickup y avanzá "
+        "hasta la pantalla de Apple Pay SIN confirmar. Fijate cuánto tardaste."
+    )
+
+
 def handle_command(text: str) -> None:
     t = text.strip().lower()
+    if re.match(r"^/?prueba\s*compra", t):
+        practice_alert()
+        return
     m = re.match(r"^/?busca(?:r)?\b\s*(.*)$", t)
     if m:
         key = find_product(m.group(1))
@@ -192,7 +228,7 @@ def run(duration_min: float, interval: int) -> None:
         current = {a.key for a in items}
         new_items = [a for a in items if a.key not in notified]
         print(f"{now()} checked {checked} stores, available: {len(items)}, new: {len(new_items)}")
-        if new_items and notifier.notify(format_found(items, parts)):
+        if new_items and send_alert(items, parts):
             notified |= {a.key for a in new_items}
         notified &= current  # forget sold-out items so a restock notifies again
 
