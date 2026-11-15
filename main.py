@@ -88,7 +88,7 @@ def format_headline(items: List[apple_checker.Availability], parts: Dict[str, st
         f"🚨 HAY STOCK: {split_name(parts.get(a.part, a.part))}\n"
         f"📍 {a.store_name} ({a.miles:.0f} mi){quote}\n"
         f"👉 {buy_url(a.part)}\n"
-        f"Elegí pickup en {a.store_name} y pagá con Apple Pay."
+        f"Add to Bag → Check Out → pickup en {a.store_name} → tarjeta guardada."
     )
 
 
@@ -143,7 +143,7 @@ def practice_alert() -> None:
     send_alert(items, parts, prefix="🧪 PRUEBA (no es el Duo, NO pagues)\n")
     notifier.reply(
         "🧪 Practicá: tocá el link del primer mensaje, elegí la tienda para pickup y avanzá "
-        "hasta la pantalla de Apple Pay SIN confirmar. Fijate cuánto tardaste."
+        "hasta la pantalla final de pago (Place Order) SIN confirmar. Fijate cuánto tardaste."
     )
 
 

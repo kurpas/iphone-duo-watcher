@@ -18,12 +18,12 @@ Primero responde qué modelos va a buscar y después el resultado. Los productos
 
 No se automatiza login, carrito ni pago, y no se guarda ningún dato sensible. El aviso llega en 2 mensajes:
 
-1. **Arriba:** modelo, tienda más cercana y link directo, con color y memoria ya elegidos (unlocked). En el iPhone abre la app Apple Store.
+1. **Arriba:** modelo, tienda más cercana y link directo, con color y memoria ya elegidos (unlocked).
 2. **Abajo:** detalle de todos los modelos y tiendas con stock, cada uno con su link.
 
-Pasos: tocar el link → Add to Bag → Check Out → elegir **pickup** en la tienda del aviso → pagar con **Apple Pay**.
+Pasos: tocar el link → Add to Bag → Check Out → elegir **pickup** en la tienda del aviso → pagar con la **tarjeta guardada** en la cuenta Apple (puede pedir CVV).
 
-Preparación (una vez): app Apple Store logueada, Apple Pay con la tarjeta, notificaciones de Telegram con sonido. Para practicar, mandale `prueba compra` al bot: simula un aviso con un 18 Pro en stock. Recorré el flujo hasta Apple Pay **sin confirmar**.
+Preparación (una vez): sesión de Apple iniciada en Chrome del celular (apple.com/shop/account), con "mantener sesión" marcado; notificaciones de Telegram con sonido. Para practicar, mandale `prueba compra` al bot: simula un aviso con un 18 Pro en stock. Recorré el flujo hasta "Place Order" **sin confirmar**.
 
 ## Estructura
 
