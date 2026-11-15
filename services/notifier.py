@@ -1,12 +1,13 @@
-"""Sends notifications via WhatsApp (CallMeBot) and/or Telegram.
+"""Sends notifications via Telegram and/or WhatsApp (CallMeBot), and reads Telegram commands.
 
 Each channel is enabled only if its environment variables are set:
-  WhatsApp: CALLMEBOT_PHONE (e.g. +15615551234), CALLMEBOT_APIKEY
   Telegram: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+  WhatsApp: CALLMEBOT_PHONE (e.g. +15615551234), CALLMEBOT_APIKEY
 Errors never print URLs, so secrets don't leak into logs.
 """
 from __future__ import annotations
 
+import json
 import os
 import urllib.parse
 import urllib.request
@@ -22,22 +23,50 @@ def _whatsapp(text: str) -> None:
         raise RuntimeError("CallMeBot rejected the message (check phone/apikey)")
 
 
+def _telegram_api(method: str, params: dict, timeout: int = 30) -> dict:
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+    data = urllib.parse.urlencode(params).encode()
+    with urllib.request.urlopen(
+        f"https://api.telegram.org/bot{token}/{method}", data=data, timeout=timeout
+    ) as r:
+        return json.load(r)
+
+
 def _telegram(text: str) -> None:
-    token, chat = os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"]
-    data = urllib.parse.urlencode(
-        {"chat_id": chat, "text": text, "disable_web_page_preview": "true"}
-    ).encode()
-    urllib.request.urlopen(
-        f"https://api.telegram.org/bot{token}/sendMessage", data=data, timeout=30
-    ).read()
+    _telegram_api(
+        "sendMessage",
+        {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text, "disable_web_page_preview": "true"},
+    )
+
+
+def telegram_enabled() -> bool:
+    return bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
+
+
+def reply(text: str) -> None:
+    """Reply on Telegram only (answers to commands)."""
+    try:
+        _telegram(text)
+    except Exception as exc:
+        print(f"[reply] telegram failed: {type(exc).__name__}")
+
+
+def get_messages(offset: int, timeout: int) -> List[dict]:
+    """Long-polls Telegram for new messages. Returns raw update objects."""
+    res = _telegram_api(
+        "getUpdates",
+        {"offset": offset, "timeout": timeout, "allowed_updates": '["message"]'},
+        timeout=timeout + 15,
+    )
+    return res.get("result", [])
 
 
 def channels() -> List[str]:
     out = []
+    if telegram_enabled():
+        out.append("telegram")
     if os.environ.get("CALLMEBOT_PHONE") and os.environ.get("CALLMEBOT_APIKEY"):
         out.append("whatsapp")
-    if os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"):
-        out.append("telegram")
     return out
 
 

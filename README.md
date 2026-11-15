@@ -4,6 +4,16 @@ Revisa cada ~75 segundos si hay **iPhone Duo** (256GB o 512GB, Star White o Nigh
 
 Usa el mismo servicio que consulta la página de Apple al apretar "Check availability" (`/shop/retail/pickup-message`). No compra ni reserva nada.
 
+## Comandos de Telegram
+
+Mientras corre, el bot responde en segundos (solo a tu chat):
+
+- `busca duo`: iPhone Duo 256/512GB, Star White / Night Sky
+- `busca 18`: iPhone 18 Pro y Pro Max 256GB, todos los colores
+- cualquier otro texto: muestra la ayuda
+
+Primero responde qué modelos va a buscar y después el resultado. Los productos se definen en `config.json` → `products`. Con `"watch": true` también entran en la búsqueda automática; hoy solo el Duo.
+
 ## Estructura
 
 - `services/apple_checker.py`: consulta Apple y filtra por distancia

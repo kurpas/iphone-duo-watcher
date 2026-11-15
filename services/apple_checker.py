@@ -53,9 +53,9 @@ def fetch_stores(parts: List[str], zip_code: str, timeout: int = 20) -> List[dic
     return data["body"]["stores"]
 
 
-def check(cfg: dict) -> Tuple[List[Availability], int, List[str]]:
-    """Returns (available items, number of stores checked, errors)."""
-    parts: Dict[str, str] = cfg["parts"]
+def check(cfg: dict, parts: Dict[str, str]) -> Tuple[List[Availability], int, List[str]]:
+    """Checks the given {partNumber: name} map.
+    Returns (available items, number of stores checked, errors)."""
     origin = cfg["origin"]
     stores: Dict[str, dict] = {}
     errors: List[str] = []

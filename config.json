@@ -1,14 +1,38 @@
 {
-  "product_url": "https://www.apple.com/shop/buy-iphone/iphone-duo",
-  "parts": {
-    "MK1E4LL/A": "iPhone Duo 256GB Star White",
-    "MK1F4LL/A": "iPhone Duo 256GB Night Sky",
-    "MK1G4LL/A": "iPhone Duo 512GB Star White",
-    "MK1H4LL/A": "iPhone Duo 512GB Night Sky"
+  "products": {
+    "duo": {
+      "label": "iPhone Duo",
+      "aliases": ["duo", "iphone duo"],
+      "watch": true,
+      "url": "https://www.apple.com/shop/buy-iphone/iphone-duo",
+      "parts": {
+        "MK1E4LL/A": "iPhone Duo 256GB Star White",
+        "MK1F4LL/A": "iPhone Duo 256GB Night Sky",
+        "MK1G4LL/A": "iPhone Duo 512GB Star White",
+        "MK1H4LL/A": "iPhone Duo 512GB Night Sky"
+      }
+    },
+    "18": {
+      "label": "iPhone 18 Pro / Pro Max",
+      "aliases": ["18", "18 pro", "iphone 18", "iphone 18 pro"],
+      "watch": false,
+      "url": "https://www.apple.com/shop/buy-iphone/iphone-18-pro",
+      "parts": {
+        "MJQ34LL/A": "iPhone 18 Pro 256GB Black",
+        "MJQ44LL/A": "iPhone 18 Pro 256GB Silver",
+        "MJQ54LL/A": "iPhone 18 Pro 256GB Burgundy",
+        "MJQ64LL/A": "iPhone 18 Pro 256GB Glacier",
+        "MJW44LL/A": "iPhone 18 Pro Max 256GB Black",
+        "MJW54LL/A": "iPhone 18 Pro Max 256GB Silver",
+        "MJW64LL/A": "iPhone 18 Pro Max 256GB Burgundy",
+        "MJW74LL/A": "iPhone 18 Pro Max 256GB Glacier"
+      }
+    }
   },
   "search_zips": ["33444", "33130", "34102"],
   "origin": {"name": "Delray Beach", "lat": 26.4615, "lon": -80.0728},
   "max_miles": 120,
   "interval_seconds": 75,
-  "alert_after_consecutive_errors": 10
+  "alert_after_consecutive_errors": 10,
+  "stores_per_model_in_message": 3
 }

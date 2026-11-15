@@ -1,100 +1,231 @@
-"""iPhone Duo pickup watcher.
+"""iPhone pickup watcher + Telegram bot.
 
-  python main.py --once            # single check, print result
-  python main.py --duration 330    # loop for 330 minutes (used by GitHub Actions)
+  python main.py --once [duo|18]   # single check, print result
+  python main.py --duration 330    # watch loop for 330 min, answering Telegram commands
   python main.py --test-notify     # send a test message to configured channels
+
+Telegram commands: "busca duo", "busca 18", "ayuda"
 """
 from __future__ import annotations
 
 import argparse
 import json
-import random
+import os
+import re
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict, List, Optional
 
 from services import apple_checker, notifier
 
 CONFIG = json.loads((Path(__file__).parent / "config.json").read_text())
+PRODUCTS: Dict[str, dict] = CONFIG["products"]
+NAME_RE = re.compile(r"^(?P<model>.*?) (?P<mem>\d+(?:GB|TB)) (?P<color>.+)$")
+MAX_MSG_AGE = 15 * 60  # ignore Telegram messages older than this (e.g. left over from long ago)
 
 
 def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
-def format_alert(items) -> str:
-    lines = ["iPhone Duo DISPONIBLE para pickup:"]
+def split_name(name: str) -> str:
+    m = NAME_RE.match(name)
+    return f"{m['model']} · {m['color']} · {m['mem']}" if m else name
+
+
+def area() -> str:
+    return f"tiendas a ≤{CONFIG['max_miles']} mi de {CONFIG['origin']['name']}"
+
+
+def watched_parts() -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    for p in PRODUCTS.values():
+        if p.get("watch"):
+            out.update(p["parts"])
+    return out
+
+
+def url_for(part: str) -> str:
+    for p in PRODUCTS.values():
+        if part in p["parts"]:
+            return p["url"]
+    return ""
+
+
+def format_found(items: List[apple_checker.Availability], parts: Dict[str, str]) -> str:
+    """Groups availability by model; lists nearest stores per model."""
+    n = CONFIG["stores_per_model_in_message"]
+    by_part: "OrderedDict[str, list]" = OrderedDict((p, []) for p in parts)
     for a in items:
-        lines.append(f"- {a.model} @ {a.store_name} ({a.city}, {a.miles:.0f} mi) {a.quote}".rstrip())
-    lines.append(f"Reservar: {CONFIG['product_url']}")
+        by_part.setdefault(a.part, []).append(a)
+
+    lines = ["✅ DISPONIBLE para pickup:"]
+    urls = []
+    for part, stores in by_part.items():
+        if not stores:
+            continue
+        stores.sort(key=lambda a: a.miles)
+        shown = ", ".join(f"{a.store_name} ({a.miles:.0f} mi)" for a in stores[:n])
+        more = f" y {len(stores) - n} más" if len(stores) > n else ""
+        lines.append(f"• {split_name(parts.get(part, part))}: {shown}{more}")
+        u = url_for(part)
+        if u and u not in urls:
+            urls.append(u)
+    missing = [split_name(parts[p]) for p, s in by_part.items() if not s and p in parts]
+    if missing:
+        lines.append("\n❌ Sin stock:")
+        lines += [f"• {m}" for m in missing]
+    lines.append("")
+    lines += [f"Reservar: {u}" for u in urls]
     return "\n".join(lines)
 
 
+# ---------- Telegram commands ----------
+
+def help_text() -> str:
+    opts = "\n".join(f"• busca {key} → {p['label']}" for key, p in PRODUCTS.items())
+    return f"Comandos:\n{opts}\n\nBusco solo pickup en {area()}."
+
+
+def find_product(arg: str) -> Optional[str]:
+    arg = arg.strip().lower()
+    for key, p in PRODUCTS.items():
+        if arg == key or arg in p.get("aliases", []):
+            return key
+    return None
+
+
+def on_demand_search(key: str) -> None:
+    p = PRODUCTS[key]
+    parts = p["parts"]
+    notifier.reply(
+        f"🔎 Buscando {p['label']} para pickup en {area()}:\n"
+        + "\n".join(f"• {split_name(n)}" for n in parts.values())
+    )
+    items, checked, errors = apple_checker.check(CONFIG, parts)
+    if checked == 0:
+        notifier.reply("⚠️ No pude consultar a Apple ahora. Probá de nuevo en un rato.")
+        return
+    if items:
+        notifier.reply(format_found(items, parts) + f"\n\n(revisé {checked} tiendas)")
+    else:
+        notifier.reply(f"❌ No hay stock de ninguno en las {checked} tiendas.")
+
+
+def handle_command(text: str) -> None:
+    t = text.strip().lower()
+    m = re.match(r"^/?busca(?:r)?\b\s*(.*)$", t)
+    if m:
+        key = find_product(m.group(1))
+        if key:
+            on_demand_search(key)
+        else:
+            notifier.reply("No entendí qué buscar.\n\n" + help_text())
+    else:
+        notifier.reply(help_text())
+
+
+class CommandListener:
+    """Long-polls Telegram and runs commands from the configured chat only."""
+
+    def __init__(self) -> None:
+        self.offset = 0
+        self.chat_id = str(os.environ.get("TELEGRAM_CHAT_ID", ""))
+
+    def wait(self, seconds: float) -> None:
+        """Waits `seconds`, answering any commands that arrive meanwhile."""
+        end = time.time() + seconds
+        if not notifier.telegram_enabled():
+            time.sleep(max(0, seconds))
+            return
+        while (remaining := end - time.time()) > 1:
+            try:
+                updates = notifier.get_messages(self.offset, timeout=int(min(30, remaining)))
+            except Exception as exc:
+                print(f"{now()} [telegram] poll failed: {type(exc).__name__}")
+                time.sleep(min(10, max(0, end - time.time())))
+                continue
+            for u in updates:
+                self.offset = u["update_id"] + 1
+                msg = u.get("message") or {}
+                if str(msg.get("chat", {}).get("id")) != self.chat_id:
+                    continue  # ignore strangers
+                if time.time() - msg.get("date", 0) > MAX_MSG_AGE or not msg.get("text"):
+                    continue
+                print(f"{now()} [telegram] command: {msg['text'][:40]!r}")
+                try:
+                    handle_command(msg["text"])
+                except Exception as exc:
+                    print(f"{now()} [telegram] command failed: {type(exc).__name__}: {exc}")
+                    notifier.reply("⚠️ Hubo un error procesando el pedido.")
+
+
+# ---------- watch loop ----------
+
 def run(duration_min: float, interval: int) -> None:
     deadline = time.time() + duration_min * 60
+    parts = watched_parts()
+    listener = CommandListener()
     notified = set()  # (store, part) currently known as available
     consecutive_errors = 0
     error_alert_sent = False
 
     while True:
-        items, checked, errors = apple_checker.check(CONFIG)
-        if errors:
-            for e in errors:
-                print(f"{now()} [error] {e}")
+        items, checked, errors = apple_checker.check(CONFIG, parts)
+        for e in errors:
+            print(f"{now()} [error] {e}")
         if errors and checked == 0:
             consecutive_errors += 1
             if consecutive_errors >= CONFIG["alert_after_consecutive_errors"] and not error_alert_sent:
                 notifier.notify(
-                    "iPhone Duo watcher: Apple no responde hace "
+                    "⚠️ Watcher: Apple no responde hace "
                     f"{consecutive_errors} chequeos seguidos. Último error: {errors[-1][:200]}"
                 )
                 error_alert_sent = True
         else:
             if error_alert_sent:
-                notifier.notify("iPhone Duo watcher: volvió a funcionar.")
+                notifier.notify("Watcher: volvió a funcionar.")
             consecutive_errors, error_alert_sent = 0, False
 
         current = {a.key for a in items}
         new_items = [a for a in items if a.key not in notified]
         print(f"{now()} checked {checked} stores, available: {len(items)}, new: {len(new_items)}")
-        if new_items:
-            # Include everything currently available so the message is complete.
-            if notifier.notify(format_alert(items)):
-                notified |= {a.key for a in new_items}
-        # Forget items that went out of stock, so a restock notifies again.
-        notified &= current
+        if new_items and notifier.notify(format_found(items, parts)):
+            notified |= {a.key for a in new_items}
+        notified &= current  # forget sold-out items so a restock notifies again
 
         if time.time() + interval > deadline:
             break
-        time.sleep(interval + random.uniform(-10, 10))
+        listener.wait(interval)
 
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--once", action="store_true")
+    p.add_argument("--once", nargs="?", const="watched", metavar="PRODUCT")
     p.add_argument("--duration", type=float, default=0, help="minutes to keep looping")
     p.add_argument("--interval", type=int, default=CONFIG["interval_seconds"])
     p.add_argument("--test-notify", action="store_true")
     args = p.parse_args()
 
     if args.test_notify:
-        items, checked, errors = apple_checker.check(CONFIG)
-        msg = (
-            f"iPhone Duo watcher: prueba OK. Revisé {checked} tiendas a <= {CONFIG['max_miles']} mi "
-            f"de {CONFIG['origin']['name']}; disponibles ahora: {len(items)}."
-        )
+        items, checked, errors = apple_checker.check(CONFIG, watched_parts())
+        msg = f"Watcher: prueba OK. Revisé {checked} {area()}; disponibles ahora: {len(items)}."
         if errors:
             msg += f" Errores: {len(errors)}"
-        ok = notifier.notify(msg)
-        raise SystemExit(0 if ok else 1)
+        msg += "\n\n" + help_text()
+        raise SystemExit(0 if notifier.notify(msg) else 1)
 
     if args.once:
-        items, checked, errors = apple_checker.check(CONFIG)
+        key = find_product(args.once) if args.once != "watched" else None
+        parts = PRODUCTS[key]["parts"] if key else watched_parts()
+        items, checked, errors = apple_checker.check(CONFIG, parts)
         for e in errors:
             print(f"[error] {e}")
         print(f"Checked {checked} stores. Available: {len(items)}")
         if items:
-            print(format_alert(items))
+            print(format_found(items, parts))
         return
 
     run(args.duration or 60, args.interval)
