@@ -87,12 +87,50 @@ def format_headline(items: List[apple_checker.Availability], parts: Dict[str, st
     """Short first message: what shows on the phone's lock screen. Nearest store wins."""
     a = min(items, key=lambda x: x.miles)
     quote = f" · {a.quote}" if a.quote else ""
-    return (
-        f"🚨 HAY STOCK: {split_name(parts.get(a.part, a.part))}\n"
-        f"📍 {a.store_name} ({a.miles:.0f} mi){quote}\n"
-        f"👉 {buy_url(a.part)}\n"
-        f"Add to Bag → Check Out → pickup en {a.store_name} → tarjeta guardada."
-    )
+    lines = [
+        f"🚨 HAY STOCK: {split_name(parts.get(a.part, a.part))}",
+        f"📍 {a.store_name} ({a.miles:.0f} mi){quote}",
+        f"👉 {buy_url(a.part)}",
+        f"Add to Bag → Check Out → pickup en {a.store_name} → tarjeta guardada.",
+    ]
+
+    # Plan B: same model in other stores (go back ONE step, don't start over).
+    same = sorted((x for x in items if x.part == a.part and x is not a), key=lambda x: x.miles)
+    plan_b = "\n🔁 Si da error al pagar: NO empieces de nuevo. Volvé un paso atrás y probá otro horario"
+    if same:
+        plan_b += " u otra tienda: " + ", ".join(f"{x.store_name} ({x.miles:.0f} mi)" for x in same[:3])
+    lines.append(plan_b + ".")
+
+    # Other variants (color / storage) available right now, nearest store each.
+    nearest: Dict[str, apple_checker.Availability] = {}
+    for x in sorted(items, key=lambda x: x.miles):
+        if x.part != a.part:
+            nearest.setdefault(x.part, x)
+    if nearest:
+        lines.append("\n➕ También hay:")
+        for x in nearest.values():
+            lines.append(f"• {split_name(parts.get(x.part, x.part))} en {x.store_name} ({x.miles:.0f} mi)")
+            lines.append(f"  👉 {buy_url(x.part)}")
+    return "\n".join(lines)
+
+
+def fmt_duration(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s} s"
+    m, s = divmod(s, 60)
+    return f"{m} min {s} s" if m < 60 else f"{m // 60} h {m % 60} min"
+
+
+def format_sold_out(gone: List[tuple], parts: Dict[str, str]) -> str:
+    """gone = [(Availability, first_seen_ts)]. Duration is ± the check interval."""
+    local = datetime.now(ZoneInfo(CONFIG["night"]["timezone"])).strftime("%H:%M")
+    lines = [f"⌛ Se agotó ({local} AR):"]
+    for a, since in sorted(gone, key=lambda g: g[0].miles):
+        lines.append(
+            f"• {split_name(parts.get(a.part, a.part))} en {a.store_name}: duró ~{fmt_duration(time.time() - since)}"
+        )
+    return "\n".join(lines)
 
 
 def send_alert(items: List[apple_checker.Availability], parts: Dict[str, str], prefix: str = "") -> bool:
@@ -331,6 +369,7 @@ def run(duration_min: float, interval: int) -> None:
     parts = watched_parts()
     listener = CommandListener()
     notified = set()  # (store, part) currently known as available
+    first_seen: Dict[tuple, tuple] = {}  # (store, part) -> (Availability, timestamp first seen)
     consecutive_errors = 0
     error_alert_sent = False
     STATE["run_started"] = time.time()
@@ -370,7 +409,15 @@ def run(duration_min: float, interval: int) -> None:
         print(f"{now()} checked {checked} stores, available: {len(items)}, new: {len(new_items)}")
         if new_items and send_alert(items, parts):
             notified |= {a.key for a in new_items}
-        notified &= current  # forget sold-out items so a restock notifies again
+
+        if checked > 0:  # only trust "disappeared" when Apple actually answered
+            for a in items:
+                first_seen.setdefault(a.key, (a, time.time()))
+            gone = [first_seen.pop(k) for k in list(first_seen) if k not in current]
+            if gone:
+                print(f"{now()} sold out: {len(gone)}")
+                notifier.notify(format_sold_out(gone, parts))
+            notified &= current  # forget sold-out items so a restock notifies again
 
         if time.time() + current_interval(interval) > deadline:
             break

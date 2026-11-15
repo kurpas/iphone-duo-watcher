@@ -29,6 +29,12 @@ No se automatiza login, carrito ni pago, y no se guarda ningún dato sensible. E
 
 Pasos: tocar el link → Add to Bag → Check Out → elegir **pickup** en la tienda del aviso → pagar con la **tarjeta guardada** en la cuenta Apple (puede pedir CVV).
 
+Apple **no reserva** la unidad en la bolsa: se asigna recién al tocar *Place Order*. Si alguien paga antes, sale *"The delivery and pickup option you have chosen is no longer available"*. En ese caso **no empieces de nuevo**: volvé un paso atrás y probá otro horario u otra de las tiendas que lista el aviso (🔁 plan B). Si aparece otra variante, el aviso también la muestra (➕).
+
+Cuando el stock desaparece llega `⌛ Se agotó … duró ~X` (precisión ± el intervalo de chequeo). Sirve para saber cuánto tiempo hay de verdad.
+
+Consejos: desde la compu suele ser más rápido; AppleCare → "No", Trade-in → "No" sin leer; CVV a mano.
+
 Preparación (una vez): sesión de Apple iniciada en Chrome del celular (apple.com/shop/account), con "mantener sesión" marcado; notificaciones de Telegram con sonido. Para practicar, mandale `prueba compra` al bot: simula un aviso con un 18 Pro en stock. Recorré el flujo hasta "Place Order" **sin confirmar**.
 
 ## Estructura
