@@ -2,8 +2,8 @@ name: iPhone Duo watcher
 
 on:
   schedule:
-    # Each run loops for ~5.5h; the cron just makes sure a new run is queued
-    # right after the previous one ends (concurrency keeps only one running).
+    # Backup only: each watch run re-launches the next one itself (last step).
+    # Concurrency keeps a single run active at a time.
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
@@ -12,6 +12,9 @@ on:
         default: watch
         type: choice
         options: [watch, once, test]
+      minutes:
+        description: "watch duration in minutes"
+        default: "330"
 
 concurrency:
   group: watcher
@@ -19,6 +22,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write   # to re-launch the next watch run
 
 jobs:
   watch:
@@ -36,9 +40,19 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run
+        id: run
         run: |
           case "${{ inputs.mode || 'watch' }}" in
             once) python main.py --once ;;
             test) python main.py --test-notify ;;
-            *)    python main.py --duration 330 ;;
+            *)    python main.py --duration "${{ inputs.minutes || '330' }}" ;;
           esac
+      # Chain: queue the next watch run (starts as soon as this one ends).
+      # Skipped when the run is cancelled, so cancelling = stopping.
+      - name: Queue next run
+        if: ${{ !cancelled() && (inputs.mode || 'watch') == 'watch' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.run.outcome }}" = "failure" ]; then sleep 300; fi  # avoid a hot loop on crashes
+          gh workflow run check.yml --repo "${{ github.repository }}" -f mode=watch
