@@ -10,7 +10,13 @@ Mientras corre, el bot responde en segundos (solo a tu chat):
 
 - `busca duo`: iPhone Duo 256/512GB, Star White / Night Sky
 - `busca 18`: iPhone 18 Pro y Pro Max 256GB, todos los colores
-- cualquier otro texto: muestra la ayuda
+- `estado`: si está andando, cuántos chequeos lleva y el resultado del último
+- `pausa` / `reanuda`: frena o retoma la búsqueda automática. La pausa se guarda como mensaje fijado en el chat, así sobrevive a los reinicios
+- `prueba compra`: simula un aviso para practicar
+- `menu`: lista de comandos (también desde el botón ☰ Menú)
+- cualquier otro texto: "No entendí, escribí menu"
+
+Todos los días a las 9 (Argentina) manda un "sigo vivo" con el estado.
 
 Primero responde qué modelos va a buscar y después el resultado. Los productos se definen en `config.json` → `products`. Con `"watch": true` también entran en la búsqueda automática; hoy solo el Duo.
 

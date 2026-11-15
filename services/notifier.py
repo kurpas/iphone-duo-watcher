@@ -39,6 +39,25 @@ def _telegram(text: str) -> None:
     )
 
 
+def send_and_pin(text: str) -> None:
+    """Sends a message and pins it (used to persist 'paused' across runs)."""
+    chat = os.environ["TELEGRAM_CHAT_ID"]
+    res = _telegram_api("sendMessage", {"chat_id": chat, "text": text})
+    _telegram_api(
+        "pinChatMessage",
+        {"chat_id": chat, "message_id": res["result"]["message_id"], "disable_notification": "true"},
+    )
+
+
+def unpin_all() -> None:
+    _telegram_api("unpinAllChatMessages", {"chat_id": os.environ["TELEGRAM_CHAT_ID"]})
+
+
+def pinned_text() -> str:
+    res = _telegram_api("getChat", {"chat_id": os.environ["TELEGRAM_CHAT_ID"]})
+    return (res.get("result", {}).get("pinned_message") or {}).get("text", "")
+
+
 def telegram_enabled() -> bool:
     return bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
 

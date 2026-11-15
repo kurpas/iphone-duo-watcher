@@ -70,5 +70,6 @@
     "start_hour": 0,
     "end_hour": 6,
     "interval_seconds": 120
-  }
+  },
+  "heartbeat_hour": 9
 }

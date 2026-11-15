@@ -123,14 +123,98 @@ def help_text() -> str:
         lines.append(f"• busca {key} → busca ahora {p['label']}")
     lines += [
         "• prueba compra → simula un aviso para practicar la compra (no compra nada)",
+        "• estado → muestra si la búsqueda está andando y el último chequeo",
+        "• pausa → frena la búsqueda automática (los comandos siguen andando)",
+        "• reanuda → retoma la búsqueda automática",
         "• menu → muestra este menú",
         "(también podés tocarlos desde el botón ☰ Menú)",
         "",
         f"🤖 Automático: busco {watched} cada {CONFIG['interval_seconds']} s y te aviso solo si hay stock.",
         f"🌙 De {CONFIG['night']['start_hour']} a {CONFIG['night']['end_hour']} h (Argentina): cada {CONFIG['night']['interval_seconds'] // 60} min.",
         f"📍 Solo pickup en {area()}.",
+        f"☀️ Todos los días a las {CONFIG['heartbeat_hour']} h (Argentina) te mando un \"sigo vivo\".",
     ]
     return "\n".join(lines)
+
+
+# ---------- status / pause / daily heartbeat ----------
+
+PAUSE_MARK = "⏸"
+STATE = {
+    "run_started": time.time(),
+    "checks": 0,
+    "last_check": None,
+    "last_stores": 0,
+    "last_available": 0,
+    "errors_in_row": 0,
+    "paused": False,
+    "heartbeat_date": None,
+}
+
+
+def ago(ts: Optional[float]) -> str:
+    if not ts:
+        return "nunca"
+    s = int(time.time() - ts)
+    if s < 90:
+        return f"hace {s} s"
+    m = s // 60
+    return f"hace {m} min" if m < 90 else f"hace {m // 60} h {m % 60} min"
+
+
+def status_text() -> str:
+    watched = ", ".join(p["label"] for p in PRODUCTS.values() if p.get("watch"))
+    if STATE["paused"]:
+        head = f"{PAUSE_MARK} Búsqueda automática EN PAUSA (escribí reanuda para retomarla)"
+    else:
+        every = current_interval(CONFIG["interval_seconds"])
+        night = " 🌙 modo noche" if is_night() else ""
+        head = f"▶️ Buscando {watched} cada {every} s{night}"
+    lines = ["📊 ESTADO", head]
+    lines.append(f"⏱ Tanda actual: arrancó {ago(STATE['run_started'])} · {STATE['checks']} chequeos")
+    if STATE["last_check"]:
+        result = (
+            f"✅ {STATE['last_available']} disponibles" if STATE["last_available"] else "sin stock"
+        )
+        lines.append(f"🕐 Último chequeo: {ago(STATE['last_check'])} · {STATE['last_stores']} tiendas · {result}")
+    if STATE["errors_in_row"]:
+        lines.append(f"⚠️ Apple no respondió en los últimos {STATE['errors_in_row']} chequeos")
+    return "\n".join(lines)
+
+
+def set_paused(paused: bool) -> None:
+    if paused == STATE["paused"]:
+        notifier.reply("Ya está en pausa." if paused else "Ya está buscando.")
+        return
+    STATE["paused"] = paused
+    if paused:
+        notifier.send_and_pin(
+            f"{PAUSE_MARK} Búsqueda automática EN PAUSA. Escribí reanuda para retomarla.\n"
+            "(busca duo / busca 18 siguen andando)"
+        )
+    else:
+        notifier.unpin_all()
+        notifier.reply(f"▶️ Reanudada. Vuelvo a buscar cada {CONFIG['interval_seconds']} s.")
+
+
+def load_paused() -> None:
+    """Pause survives restarts: it's stored as the pinned message in the chat."""
+    if not notifier.telegram_enabled():
+        return
+    try:
+        STATE["paused"] = notifier.pinned_text().startswith(PAUSE_MARK)
+    except Exception as exc:
+        print(f"{now()} [telegram] could not read pinned message: {type(exc).__name__}")
+    print(f"{now()} paused={STATE['paused']}")
+
+
+def maybe_heartbeat() -> None:
+    """One 'still alive' message per day, in the first minutes of heartbeat_hour."""
+    local = datetime.now(ZoneInfo(CONFIG["night"]["timezone"]))
+    today = local.date().isoformat()
+    if local.hour == CONFIG["heartbeat_hour"] and local.minute < 10 and STATE["heartbeat_date"] != today:
+        STATE["heartbeat_date"] = today
+        notifier.notify("☀️ Sigo vivo.\n\n" + status_text())
 
 
 def find_product(arg: str) -> Optional[str]:
@@ -176,6 +260,15 @@ def handle_command(text: str) -> None:
     t = text.strip().lower().replace("_", " ").split("@")[0]
     if re.match(r"^/?prueba\s*compra", t):
         practice_alert()
+        return
+    if re.match(r"^/?estado\b", t):
+        notifier.reply(status_text())
+        return
+    if re.match(r"^/?pausa(r)?\b", t):
+        set_paused(True)
+        return
+    if re.match(r"^/?(reanuda(r)?|segui|seguí)\b", t):
+        set_paused(False)
         return
     m = re.match(r"^/?busca(?:r)?\b\s*(.*)$", t)
     if m:
@@ -234,9 +327,22 @@ def run(duration_min: float, interval: int) -> None:
     notified = set()  # (store, part) currently known as available
     consecutive_errors = 0
     error_alert_sent = False
+    STATE["run_started"] = time.time()
+    load_paused()
 
     while True:
+        maybe_heartbeat()
+        if STATE["paused"]:
+            if time.time() + current_interval(interval) > deadline:
+                break
+            listener.wait(current_interval(interval))
+            continue
+
         items, checked, errors = apple_checker.check(CONFIG, parts)
+        STATE["checks"] += 1
+        STATE["last_check"] = time.time()
+        STATE["last_stores"] = checked
+        STATE["last_available"] = len(items)
         for e in errors:
             print(f"{now()} [error] {e}")
         if errors and checked == 0:
@@ -251,6 +357,7 @@ def run(duration_min: float, interval: int) -> None:
             if error_alert_sent:
                 notifier.notify("Watcher: volvió a funcionar.")
             consecutive_errors, error_alert_sent = 0, False
+        STATE["errors_in_row"] = consecutive_errors
 
         current = {a.key for a in items}
         new_items = [a for a in items if a.key not in notified]
