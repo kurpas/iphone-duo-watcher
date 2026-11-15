@@ -1,6 +1,6 @@
 # iPhone Duo pickup watcher
 
-Revisa cada ~30 segundos si hay **iPhone Duo** (256GB o 512GB, Star White o Night Sky) disponible para **retiro en tienda** en los Apple Store a ≤120 millas de Delray Beach, FL, y avisa por WhatsApp y/o Telegram.
+Revisa cada ~45 segundos si hay **iPhone Duo** (256GB o 512GB, Star White o Night Sky) disponible para **retiro en tienda** en los Apple Store a ≤120 millas de Delray Beach, FL, y avisa por WhatsApp y/o Telegram.
 
 Usa el mismo servicio que consulta la página de Apple al apretar "Check availability" (`/shop/retail/pickup-message`). No compra ni reserva nada.
 

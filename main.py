@@ -191,6 +191,8 @@ STATE = {
     "last_stores": 0,
     "last_available": 0,
     "errors_in_row": 0,
+    "blocked_since": None,
+    "next_try": None,
     "paused": False,
     "heartbeat_date": None,
 }
@@ -221,8 +223,12 @@ def status_text() -> str:
             f"✅ {STATE['last_available']} disponibles" if STATE["last_available"] else "sin stock"
         )
         lines.append(f"🕐 Último chequeo: {ago(STATE['last_check'])} · {STATE['last_stores']} tiendas · {result}")
-    if STATE["errors_in_row"]:
-        lines.append(f"⚠️ Apple no respondió en los últimos {STATE['errors_in_row']} chequeos")
+    if STATE["blocked_since"]:
+        nxt = max(0, int((STATE["next_try"] or time.time()) - time.time()) // 60)
+        lines.append(
+            f"🚫 Apple nos bloquea desde {ago(STATE['blocked_since'])}; "
+            f"no insisto, próximo intento en ~{nxt} min"
+        )
     return "\n".join(lines)
 
 
@@ -372,6 +378,7 @@ def run(duration_min: float, interval: int) -> None:
     first_seen: Dict[tuple, tuple] = {}  # (store, part) -> (Availability, timestamp first seen)
     consecutive_errors = 0
     error_alert_sent = False
+    backoff = CONFIG["block_backoff_minutes"]  # e.g. [5, 10, 20]: wait times while blocked
     STATE["run_started"] = time.time()
     load_paused()
 
@@ -391,18 +398,34 @@ def run(duration_min: float, interval: int) -> None:
         for e in errors:
             print(f"{now()} [error] {e}")
         if errors and checked == 0:
+            # Blocked (HTTP 541) or Apple down: back off instead of insisting.
             consecutive_errors += 1
-            if consecutive_errors >= CONFIG["alert_after_consecutive_errors"] and not error_alert_sent:
+            if STATE["blocked_since"] is None:
+                STATE["blocked_since"] = time.time()
+            blocked_min = (time.time() - STATE["blocked_since"]) / 60
+            wait_min = backoff[min(consecutive_errors, len(backoff)) - 1]
+            STATE["next_try"] = time.time() + wait_min * 60
+            STATE["errors_in_row"] = consecutive_errors
+            print(f"{now()} blocked {blocked_min:.0f} min, retry in {wait_min} min")
+            if blocked_min >= CONFIG["alert_after_blocked_minutes"] and not error_alert_sent:
                 notifier.notify(
-                    "⚠️ Watcher: Apple no responde hace "
-                    f"{consecutive_errors} chequeos seguidos. Último error: {errors[-1][:200]}"
+                    f"⚠️ Apple nos está bloqueando hace {blocked_min:.0f} min. "
+                    f"Reintento cada {backoff[-1]} min y te aviso cuando se levante.\n"
+                    f"Último error: {errors[-1][:120]}"
                 )
                 error_alert_sent = True
-        else:
+            if time.time() + wait_min * 60 > deadline:
+                break
+            listener.wait(wait_min * 60)
+            continue
+
+        if STATE["blocked_since"] is not None:
+            took = fmt_duration(time.time() - STATE["blocked_since"])
+            print(f"{now()} unblocked after {took}")
             if error_alert_sent:
-                notifier.notify("Watcher: volvió a funcionar.")
-            consecutive_errors, error_alert_sent = 0, False
-        STATE["errors_in_row"] = consecutive_errors
+                notifier.notify(f"✅ Apple volvió a responder (el bloqueo duró ~{took}).")
+        consecutive_errors, error_alert_sent = 0, False
+        STATE.update(errors_in_row=0, blocked_since=None, next_try=None)
 
         current = {a.key for a in items}
         new_items = [a for a in items if a.key not in notified]

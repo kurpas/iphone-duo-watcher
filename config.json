@@ -62,8 +62,9 @@
     "lon": -80.0728
   },
   "max_miles": 120,
-  "interval_seconds": 30,
-  "alert_after_consecutive_errors": 20,
+  "interval_seconds": 45,
+  "block_backoff_minutes": [5, 10, 20],
+  "alert_after_blocked_minutes": 30,
   "stores_per_model_in_message": 3,
   "night": {
     "timezone": "America/Argentina/Buenos_Aires",
