@@ -64,5 +64,11 @@
   "max_miles": 120,
   "interval_seconds": 30,
   "alert_after_consecutive_errors": 20,
-  "stores_per_model_in_message": 3
+  "stores_per_model_in_message": 3,
+  "night": {
+    "timezone": "America/Argentina/Buenos_Aires",
+    "start_hour": 0,
+    "end_hour": 6,
+    "interval_seconds": 120
+  }
 }

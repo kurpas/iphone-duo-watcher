@@ -16,6 +16,7 @@ import re
 import time
 from collections import OrderedDict
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -103,6 +104,18 @@ def send_alert(items: List[apple_checker.Availability], parts: Dict[str, str], p
 
 # ---------- Telegram commands ----------
 
+def is_night() -> bool:
+    n = CONFIG.get("night")
+    if not n:
+        return False
+    h = datetime.now(ZoneInfo(n["timezone"])).hour
+    return n["start_hour"] <= h < n["end_hour"]
+
+
+def current_interval(day_interval: int) -> int:
+    return CONFIG["night"]["interval_seconds"] if is_night() else day_interval
+
+
 def help_text() -> str:
     watched = ", ".join(p["label"] for p in PRODUCTS.values() if p.get("watch"))
     lines = ["📋 MENÚ", ""]
@@ -114,6 +127,7 @@ def help_text() -> str:
         "(también podés tocarlos desde el botón ☰ Menú)",
         "",
         f"🤖 Automático: busco {watched} cada {CONFIG['interval_seconds']} s y te aviso solo si hay stock.",
+        f"🌙 De {CONFIG['night']['start_hour']} a {CONFIG['night']['end_hour']} h (Argentina): cada {CONFIG['night']['interval_seconds'] // 60} min.",
         f"📍 Solo pickup en {area()}.",
     ]
     return "\n".join(lines)
@@ -245,9 +259,9 @@ def run(duration_min: float, interval: int) -> None:
             notified |= {a.key for a in new_items}
         notified &= current  # forget sold-out items so a restock notifies again
 
-        if time.time() + interval > deadline:
+        if time.time() + current_interval(interval) > deadline:
             break
-        listener.wait(interval * random.uniform(0.85, 1.15))  # irregular, ±15%
+        listener.wait(current_interval(interval) * random.uniform(0.85, 1.15))  # irregular, ±15%
 
 
 def main() -> None:
