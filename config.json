@@ -1,0 +1,14 @@
+{
+  "product_url": "https://www.apple.com/shop/buy-iphone/iphone-duo",
+  "parts": {
+    "MK1E4LL/A": "iPhone Duo 256GB Star White",
+    "MK1F4LL/A": "iPhone Duo 256GB Night Sky",
+    "MK1G4LL/A": "iPhone Duo 512GB Star White",
+    "MK1H4LL/A": "iPhone Duo 512GB Night Sky"
+  },
+  "search_zips": ["33444", "33130", "34102"],
+  "origin": {"name": "Delray Beach", "lat": 26.4615, "lon": -80.0728},
+  "max_miles": 120,
+  "interval_seconds": 75,
+  "alert_after_consecutive_errors": 10
+}

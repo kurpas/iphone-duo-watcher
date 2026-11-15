@@ -1,0 +1,44 @@
+name: iPhone Duo watcher
+
+on:
+  schedule:
+    # Each run loops for ~5.5h; the cron just makes sure a new run is queued
+    # right after the previous one ends (concurrency keeps only one running).
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "watch = loop 5.5h, once = single check, test = send test notification"
+        default: watch
+        type: choice
+        options: [watch, once, test]
+
+concurrency:
+  group: watcher
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE }}
+      CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run
+        run: |
+          case "${{ inputs.mode || 'watch' }}" in
+            once) python main.py --once ;;
+            test) python main.py --test-notify ;;
+            *)    python main.py --duration 330 ;;
+          esac
