@@ -14,6 +14,7 @@ import os
 import random
 import re
 import time
+from html import escape
 from collections import OrderedDict
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -116,22 +117,27 @@ def current_interval(day_interval: int) -> int:
     return CONFIG["night"]["interval_seconds"] if is_night() else day_interval
 
 
-def help_text() -> str:
+def help_text(html: bool = True) -> str:
+    """Menu. With html=True the command names are bold (Telegram HTML)."""
+    def cmd(name: str) -> str:
+        return f"<b>{name.upper()}</b>" if html else name.upper()
+
+    esc = escape if html else (lambda x: x)
     watched = ", ".join(p["label"] for p in PRODUCTS.values() if p.get("watch"))
-    lines = ["📋 MENÚ", ""]
+    lines = [cmd("📋 Menú"), ""]
     for key, p in PRODUCTS.items():
-        lines.append(f"• busca {key} → busca ahora {p['label']}")
+        lines.append(f"• {cmd('busca ' + key)} → busca ahora {esc(p['label'])}")
     lines += [
-        "• prueba compra → simula un aviso para practicar la compra (no compra nada)",
-        "• estado → muestra si la búsqueda está andando y el último chequeo",
-        "• pausa → frena la búsqueda automática (los comandos siguen andando)",
-        "• reanuda → retoma la búsqueda automática",
-        "• menu → muestra este menú",
-        "(también podés tocarlos desde el botón ☰ Menú)",
+        f"• {cmd('prueba compra')} → simula un aviso para practicar la compra (no compra nada)",
+        f"• {cmd('estado')} → muestra si la búsqueda está andando y el último chequeo",
+        f"• {cmd('pausa')} → frena la búsqueda automática (los comandos siguen andando)",
+        f"• {cmd('reanuda')} → retoma la búsqueda automática",
+        f"• {cmd('menu')} → muestra este menú",
+        "(también podés tocarlos desde el botón ☰ Menú; mayúsculas o minúsculas da igual)",
         "",
-        f"🤖 Automático: busco {watched} cada {CONFIG['interval_seconds']} s y te aviso solo si hay stock.",
+        f"🤖 Automático: busco {esc(watched)} cada {CONFIG['interval_seconds']} s y te aviso solo si hay stock.",
         f"🌙 De {CONFIG['night']['start_hour']} a {CONFIG['night']['end_hour']} h (Argentina): cada {CONFIG['night']['interval_seconds'] // 60} min.",
-        f"📍 Solo pickup en {area()}.",
+        f"📍 Solo pickup en {esc(area())}.",
         f"☀️ Todos los días a las {CONFIG['heartbeat_hour']} h (Argentina) te mando un \"sigo vivo\".",
     ]
     return "\n".join(lines)
@@ -278,7 +284,7 @@ def handle_command(text: str) -> None:
         else:
             notifier.reply("No conozco ese modelo 🤔 Escribí menu para ver qué puedo buscar.")
     elif re.match(r"^/?(menu|menú|info|ayuda|help|start|comandos)\b", t):
-        notifier.reply(help_text())
+        notifier.reply(help_text(), html=True)
     else:
         notifier.reply("No entendí 🤔 Escribí menu para ver los comandos.")
 
@@ -384,7 +390,7 @@ def main() -> None:
         msg = f"Watcher: prueba OK. Revisé {checked} {area()}; disponibles ahora: {len(items)}."
         if errors:
             msg += f" Errores: {len(errors)}"
-        msg += "\n\n" + help_text()
+        msg += "\n\n" + help_text(html=False)
         raise SystemExit(0 if notifier.notify(msg) else 1)
 
     if args.once:

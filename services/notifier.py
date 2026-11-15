@@ -32,11 +32,11 @@ def _telegram_api(method: str, params: dict, timeout: int = 30) -> dict:
         return json.load(r)
 
 
-def _telegram(text: str) -> None:
-    _telegram_api(
-        "sendMessage",
-        {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text, "disable_web_page_preview": "true"},
-    )
+def _telegram(text: str, html: bool = False) -> None:
+    params = {"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": text, "disable_web_page_preview": "true"}
+    if html:
+        params["parse_mode"] = "HTML"
+    _telegram_api("sendMessage", params)
 
 
 def send_and_pin(text: str) -> None:
@@ -62,10 +62,10 @@ def telegram_enabled() -> bool:
     return bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
 
 
-def reply(text: str) -> None:
-    """Reply on Telegram only (answers to commands)."""
+def reply(text: str, html: bool = False) -> None:
+    """Reply on Telegram only (answers to commands). html=True enables <b> etc."""
     try:
-        _telegram(text)
+        _telegram(text, html)
     except Exception as exc:
         print(f"[reply] telegram failed: {type(exc).__name__}")
 
