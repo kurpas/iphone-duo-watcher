@@ -168,11 +168,11 @@ def handle_command(text: str) -> None:
         if key:
             on_demand_search(key)
         else:
-            notifier.reply("No entendí qué buscar.\n\n" + help_text())
+            notifier.reply("No conozco ese modelo 🤔 Escribí menu para ver qué puedo buscar.")
     elif re.match(r"^/?(menu|menú|info|ayuda|help|start|comandos)\b", t):
         notifier.reply(help_text())
     else:
-        notifier.reply("No entendí 🤔\n\n" + help_text())
+        notifier.reply("No entendí 🤔 Escribí menu para ver los comandos.")
 
 
 class CommandListener:
