@@ -54,9 +54,7 @@
     }
   },
   "search_zips": [
-    "33444",
-    "33130",
-    "34102"
+    "33444"
   ],
   "origin": {
     "name": "Delray Beach",
@@ -64,7 +62,7 @@
     "lon": -80.0728
   },
   "max_miles": 120,
-  "interval_seconds": 75,
-  "alert_after_consecutive_errors": 10,
+  "interval_seconds": 30,
+  "alert_after_consecutive_errors": 20,
   "stores_per_model_in_message": 3
 }

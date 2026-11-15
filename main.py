@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import time
 from collections import OrderedDict
@@ -246,7 +247,7 @@ def run(duration_min: float, interval: int) -> None:
 
         if time.time() + interval > deadline:
             break
-        listener.wait(interval)
+        listener.wait(interval * random.uniform(0.85, 1.15))  # irregular, ±15%
 
 
 def main() -> None:
