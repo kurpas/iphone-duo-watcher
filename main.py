@@ -103,9 +103,19 @@ def send_alert(items: List[apple_checker.Availability], parts: Dict[str, str], p
 # ---------- Telegram commands ----------
 
 def help_text() -> str:
-    opts = "\n".join(f"• busca {key} → {p['label']}" for key, p in PRODUCTS.items())
-    opts += "\n• prueba compra → simula un aviso de stock (con un 18 Pro) para practicar la compra"
-    return f"Comandos:\n{opts}\n\nBusco solo pickup en {area()}."
+    watched = ", ".join(p["label"] for p in PRODUCTS.values() if p.get("watch"))
+    lines = ["📋 MENÚ", ""]
+    for key, p in PRODUCTS.items():
+        lines.append(f"• busca {key} → busca ahora {p['label']}")
+    lines += [
+        "• prueba compra → simula un aviso para practicar la compra (no compra nada)",
+        "• menu → muestra este menú",
+        "(también podés tocarlos desde el botón ☰ Menú)",
+        "",
+        f"🤖 Automático: busco {watched} cada {CONFIG['interval_seconds']} s y te aviso solo si hay stock.",
+        f"📍 Solo pickup en {area()}.",
+    ]
+    return "\n".join(lines)
 
 
 def find_product(arg: str) -> Optional[str]:
@@ -148,7 +158,7 @@ def practice_alert() -> None:
 
 
 def handle_command(text: str) -> None:
-    t = text.strip().lower()
+    t = text.strip().lower().replace("_", " ").split("@")[0]
     if re.match(r"^/?prueba\s*compra", t):
         practice_alert()
         return
@@ -159,8 +169,10 @@ def handle_command(text: str) -> None:
             on_demand_search(key)
         else:
             notifier.reply("No entendí qué buscar.\n\n" + help_text())
-    else:
+    elif re.match(r"^/?(menu|menú|info|ayuda|help|start|comandos)\b", t):
         notifier.reply(help_text())
+    else:
+        notifier.reply("No entendí 🤔\n\n" + help_text())
 
 
 class CommandListener:
