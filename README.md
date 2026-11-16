@@ -11,9 +11,11 @@ Mientras corre, el bot responde en segundos (solo a tu chat):
 - `busca duo`: iPhone Duo 256/512GB, Star White / Night Sky
 - `busca 18`: iPhone 18 Pro y Pro Max 256GB, todos los colores
 - `estado`: si está andando, cuántos chequeos lleva y el resultado del último
-- `activar busqueda duo 256` / `512` / `todos`: elige qué memorias busca la automática (por defecto: `watch_storage` en `config.json`)
+- `set memoria 256` / `512` / `todos`: elige qué memorias del Duo busca la automática (por defecto: `watch_storage` en `config.json`)
+- `set millas 100`: descarta tiendas a más de esa distancia (5–120), en la automática y en `busca`. Responde qué tiendas quedan adentro y afuera
+- `set`: muestra la configuración actual
 - `pausa` / `reanuda`: frena o retoma la búsqueda automática
-- La pausa y la memoria elegida se guardan en el mensaje fijado del chat, así sobreviven a los reinicios. No lo desfijes.
+- La pausa, la memoria y las millas se guardan en el mensaje fijado del chat, así sobreviven a los reinicios. No lo desfijes.
 - `prueba compra`: simula un aviso para practicar
 - `menu`: lista de comandos (también desde el botón ☰ Menú)
 - cualquier otro texto: "No entendí, escribí menu"
@@ -65,6 +67,9 @@ python3 main.py --duration 60   # loop 60 min
 ```
 
 ## Ajustes
+
+La distancia es en **línea recta** desde Delray Beach; manejando suele ser un 10–25% más. Se consulta a Apple con un ZIP (`search_zips`), que devuelve las tiendas hasta ~120 mi, y después se filtra por `max_miles`.
+
 
 - Agregar Orlando (~2h45 manejando): `max_miles` → `165`
 - Agregar 1TB: sumar `MK1J4LL/A` y `MK1L4LL/A` en `parts`

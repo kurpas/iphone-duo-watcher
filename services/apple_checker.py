@@ -19,6 +19,10 @@ HEADERS = {
     "Referer": "https://www.apple.com/shop/buy-iphone/iphone-duo",
 }
 
+# Every store Apple returned in the last successful check, unfiltered: [(name, miles)].
+# Used to show which stores a distance limit keeps or drops.
+LAST_STORES: List[Tuple[str, float]] = []
+
 
 @dataclass(frozen=True)
 class Availability:
@@ -69,10 +73,12 @@ def check(cfg: dict, parts: Dict[str, str]) -> Tuple[List[Availability], int, Li
 
     found: List[Availability] = []
     checked = 0
+    seen: List[Tuple[str, float]] = []
     for s in stores.values():
         miles = miles_between(
             origin["lat"], origin["lon"], float(s["storelatitude"]), float(s["storelongitude"])
         )
+        seen.append((s["storeName"], miles))
         if miles > cfg["max_miles"]:
             continue
         checked += 1
@@ -89,5 +95,7 @@ def check(cfg: dict, parts: Dict[str, str]) -> Tuple[List[Availability], int, Li
                         quote=info.get("pickupSearchQuote", ""),
                     )
                 )
+    if seen:
+        LAST_STORES[:] = sorted(seen, key=lambda x: x[1])
     found.sort(key=lambda a: a.miles)
     return found, checked, errors

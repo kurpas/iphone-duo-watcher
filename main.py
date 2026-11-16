@@ -76,6 +76,13 @@ def watched_parts() -> Dict[str, str]:
     return out
 
 
+MIN_MILES, MAX_MILES = 5, 120  # Apple only returns stores up to ~120 mi from the search ZIP
+
+
+def mem_num(mem: str) -> str:
+    return mem.replace("GB", "").replace("TB", "")
+
+
 def watch_desc() -> str:
     """e.g. 'iPhone Duo 256GB' or 'iPhone Duo 256GB y 512GB'."""
     return ", ".join(f"{PRODUCTS[k]['label']} {' y '.join(STORAGE[k])}" for k in watched_keys())
@@ -199,9 +206,13 @@ def help_text(html: bool = True) -> str:
     for key in watched_keys():
         label = esc(PRODUCTS[key]["label"])
         for mem in mems_of(key):
-            num = mem.replace("GB", "").replace("TB", "")
-            lines.append(f"• {cmd(f'activar busqueda {key} {num}')} → la automática busca solo {label} {mem}")
-        lines.append(f"• {cmd(f'activar busqueda {key} todos')} → la automática busca {label} de todas las memorias")
+            lines.append(f"• {cmd('set memoria ' + mem_num(mem))} → la automática busca solo {label} {mem}")
+        lines.append(f"• {cmd('set memoria todos')} → la automática busca {label} de todas las memorias")
+    lines.append(
+        f"• {cmd('set millas 100')} → descarta tiendas a más de 100 mi (o el número que pongas, "
+        f"{MIN_MILES}–{MAX_MILES}); vale para todas las búsquedas"
+    )
+    lines.append(f"• {cmd('set')} → muestra la memoria y las millas configuradas")
     lines += [
         f"• {cmd('prueba compra')} → simula un aviso para practicar la compra (no compra nada)",
         f"• {cmd('estado')} → muestra si la búsqueda está andando y el último chequeo",
@@ -253,7 +264,7 @@ def status_text() -> str:
         every = current_interval(CONFIG["interval_seconds"])
         night = " 🌙 modo noche" if is_night() else ""
         head = f"▶️ Buscando {watched} cada {every} s{night}"
-    lines = ["📊 ESTADO", head]
+    lines = ["📊 ESTADO", head, f"📍 {area()} (en línea recta)"]
     lines.append(f"⏱ Tanda actual: arrancó {ago(STATE['run_started'])} · {STATE['checks']} chequeos")
     if STATE["last_check"]:
         if not STATE["last_stores"]:
@@ -274,6 +285,7 @@ def status_text() -> str:
 
 PAUSED_LINE = "Automática: EN PAUSA"
 MEM_PREFIX = "📱 Memoria "
+MILES_PREFIX = "📍 Distancia máx:"
 
 
 def save_settings(header: str) -> None:
@@ -286,6 +298,7 @@ def save_settings(header: str) -> None:
         lines.append(f"▶️ Automática: activa, cada {CONFIG['interval_seconds']} s")
     for k in watched_keys():
         lines.append(f"{MEM_PREFIX}{PRODUCTS[k]['label']}: {' y '.join(STORAGE[k])}")
+    lines.append(f"{MILES_PREFIX} {CONFIG['max_miles']} mi de {CONFIG['origin']['name']} (en línea recta)")
     lines.append("📌 (este mensaje fijado guarda la configuración, no lo desfijes)")
     try:
         notifier.unpin_all()
@@ -310,7 +323,7 @@ def set_storage(arg: str) -> None:
     """'duo 256' / 'duo 512' / 'duo todos' -> which storage the automatic watch looks for."""
     words = arg.split()
     if len(words) < 2:
-        notifier.reply("Decime modelo y memoria, por ejemplo: activar busqueda duo 256 (o 512, o todos).")
+        notifier.reply("Decime la memoria, por ejemplo: set memoria 256 (o 512, o todos).")
         return
     key = find_product(" ".join(words[:-1]))
     if not key:
@@ -333,7 +346,48 @@ def set_storage(arg: str) -> None:
         notifier.reply(f"Ya estaba así: la automática busca {watch_desc()}.")
         return
     STORAGE[key] = mems
-    save_settings(f"✅ Listo. La búsqueda automática ahora busca {watch_desc()}.")
+    save_settings(f"✅ Listo. Ahora busco {watch_desc()} en {area()} (en línea recta).")
+
+
+def set_miles(arg: str) -> None:
+    m = re.fullmatch(r"(\d+)\s*(mi|millas)?", arg.strip())
+    if not m:
+        notifier.reply(f"Poné un número de millas, por ejemplo: set millas 100 ({MIN_MILES}–{MAX_MILES}).")
+        return
+    miles = int(m.group(1))
+    if miles > MAX_MILES:
+        notifier.reply(
+            f"Máximo {MAX_MILES} mi: Apple no devuelve tiendas más lejos desde la zona de "
+            f"{CONFIG['origin']['name']}, así que no sumaría ninguna. Probá con set millas {MAX_MILES}."
+        )
+        return
+    if miles < MIN_MILES:
+        notifier.reply(f"Mínimo {MIN_MILES} mi. Probá con set millas {MIN_MILES} o más.")
+        return
+    if miles == CONFIG["max_miles"]:
+        notifier.reply(f"Ya estaba así: {area()}.")
+        return
+    CONFIG["max_miles"] = miles
+    header = f"✅ Listo. Ahora busco {watch_desc()} en {area()} (en línea recta)."
+    stores = apple_checker.LAST_STORES
+    if stores:
+        inside = [f"{n} {d:.0f} mi" for n, d in stores if d <= miles]
+        outside = [f"{n} {d:.0f} mi" for n, d in stores if d > miles]
+        header += f"\n\n✅ Adentro ({len(inside)}): " + (", ".join(inside) or "ninguna")
+        if outside:
+            header += f"\n🚫 Afuera ({len(outside)}): " + ", ".join(outside)
+    save_settings(header)
+
+
+def settings_help() -> str:
+    return (
+        "⚙️ Configuración actual:\n"
+        f"📱 {watch_desc()}\n"
+        f"📍 {area()} (en línea recta)\n\n"
+        "Para cambiarla:\n"
+        "• set memoria 256 / set memoria 512 / set memoria todos\n"
+        f"• set millas 100 (de {MIN_MILES} a {MAX_MILES})"
+    )
 
 
 def load_settings() -> None:
@@ -347,6 +401,10 @@ def load_settings() -> None:
         return
     STATE["paused"] = text.startswith(PAUSE_MARK) or PAUSED_LINE in text
     for line in text.splitlines():
+        if line.startswith(MILES_PREFIX):
+            m = re.search(r"\d+", line)
+            if m and MIN_MILES <= int(m.group()) <= MAX_MILES:
+                CONFIG["max_miles"] = int(m.group())
         for k in watched_keys():
             prefix = f"{MEM_PREFIX}{PRODUCTS[k]['label']}:"
             if line.startswith(prefix):
@@ -354,7 +412,7 @@ def load_settings() -> None:
                 mems = [m for m in mems_of(k) if m in found]
                 if mems:
                     STORAGE[k] = mems
-    print(f"{now()} paused={STATE['paused']} storage={STORAGE}")
+    print(f"{now()} paused={STATE['paused']} storage={STORAGE} max_miles={CONFIG['max_miles']}")
 
 
 def bot_commands() -> List[tuple]:
@@ -363,9 +421,9 @@ def bot_commands() -> List[tuple]:
     cmds += [(f"busca_{k}", f"Buscar ahora {p['label']}") for k, p in PRODUCTS.items()]
     for k in watched_keys():
         for mem in mems_of(k):
-            num = mem.replace("GB", "").replace("TB", "")
-            cmds.append((f"activar_busqueda_{k}_{num}", f"Automática: solo {PRODUCTS[k]['label']} {mem}"))
-        cmds.append((f"activar_busqueda_{k}_todos", f"Automática: {PRODUCTS[k]['label']} todas las memorias"))
+            cmds.append((f"set_memoria_{mem_num(mem)}", f"Automática: solo {PRODUCTS[k]['label']} {mem}"))
+        cmds.append(("set_memoria_todos", f"Automática: {PRODUCTS[k]['label']} todas las memorias"))
+    cmds.append(("set", "Ver configuración (memoria y millas)"))
     cmds += [
         ("estado", "Estado de la búsqueda"),
         ("pausa", "Pausar la búsqueda automática"),
@@ -437,7 +495,17 @@ def handle_command(text: str) -> None:
     if re.match(r"^/?(reanuda(r)?|segui|seguí)\b", t):
         set_paused(False)
         return
-    m = re.match(r"^/?activa(?:r)?\s+(?:la\s+)?(?:b[uú]squeda\s+)?(.*)$", t)
+    m = re.match(r"^/?set\b\s*(\S*)\s*(.*)$", t)
+    if m:
+        what, value = m.group(1), m.group(2).strip()
+        if what in ("memoria", "mem", "memory") and value:
+            set_storage(f"{watched_keys()[0]} {value}")
+        elif what in ("millas", "milla", "mi", "distancia") and value:
+            set_miles(value)
+        else:
+            notifier.reply(settings_help())
+        return
+    m = re.match(r"^/?activa(?:r)?\s+(?:la\s+)?(?:b[uú]squeda\s+)?(.*)$", t)  # old alias
     if m:
         set_storage(m.group(1))
         return
