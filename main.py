@@ -76,6 +76,8 @@ def watched_parts() -> Dict[str, str]:
     return out
 
 
+MIN_SECONDS, MAX_SECONDS = 20, 600
+SAFE_SECONDS = 45  # below this Apple blocks us (HTTP 541) more often
 MIN_MILES, MAX_MILES = 5, 120  # Apple only returns stores up to ~120 mi from the search ZIP
 
 
@@ -180,8 +182,14 @@ def is_night() -> bool:
     return n["start_hour"] <= h < n["end_hour"]
 
 
+def night_every() -> str:
+    n = max(CONFIG["night"]["interval_seconds"], CONFIG["interval_seconds"])
+    return f"{n // 60} min" if n % 60 == 0 else f"{n} s"
+
+
 def current_interval(day_interval: int) -> int:
-    return CONFIG["night"]["interval_seconds"] if is_night() else day_interval
+    # At night never check MORE often than by day (e.g. "set segundos 300").
+    return max(CONFIG["night"]["interval_seconds"], day_interval) if is_night() else day_interval
 
 
 def help_text(html: bool = True) -> str:
@@ -203,7 +211,11 @@ def help_text(html: bool = True) -> str:
         f"• {cmd('set millas 100')} → descarta tiendas a más de 100 mi (o el número que pongas, "
         f"{MIN_MILES}–{MAX_MILES}); vale para todas las búsquedas"
     )
-    lines.append(f"• {cmd('set')} → muestra la memoria y las millas configuradas")
+    lines.append(
+        f"• {cmd('set segundos 45')} → la automática busca cada 45 s (o el número que pongas, "
+        f"{MIN_SECONDS}–{MAX_SECONDS}; menos de {SAFE_SECONDS} = más riesgo de bloqueo)"
+    )
+    lines.append(f"• {cmd('set')} → muestra la memoria, las millas y los segundos configurados")
     lines += [
         f"• {cmd('prueba compra')} → simula un aviso para practicar la compra (no compra nada)",
         f"• {cmd('estado')} → muestra si la búsqueda está andando y el último chequeo",
@@ -213,7 +225,7 @@ def help_text(html: bool = True) -> str:
         "(también podés tocarlos desde el botón ☰ Menú; mayúsculas o minúsculas da igual)",
         "",
         f"🤖 Automático: busco {esc(watched)} cada {CONFIG['interval_seconds']} s y te aviso solo si hay stock.",
-        f"🌙 De {CONFIG['night']['start_hour']} a {CONFIG['night']['end_hour']} h (Argentina): cada {CONFIG['night']['interval_seconds'] // 60} min.",
+        f"🌙 De {CONFIG['night']['start_hour']} a {CONFIG['night']['end_hour']} h (Argentina): cada {night_every()}.",
         f"📍 Solo pickup en {esc(area())}.",
         f"☀️ Todos los días a las {CONFIG['heartbeat_hour']} h (Argentina) te mando un \"sigo vivo\".",
     ]
@@ -277,6 +289,7 @@ def status_text() -> str:
 PAUSED_LINE = "Automática: EN PAUSA"
 MEM_PREFIX = "📱 Memoria "
 MILES_PREFIX = "📍 Distancia máx:"
+SECONDS_PREFIX = "⏱ Frecuencia:"
 
 
 def save_settings(header: str) -> None:
@@ -286,9 +299,10 @@ def save_settings(header: str) -> None:
     if STATE["paused"]:
         lines.append(f"{PAUSE_MARK} {PAUSED_LINE} (escribí reanuda para retomarla)")
     else:
-        lines.append(f"▶️ Automática: activa, cada {CONFIG['interval_seconds']} s")
+        lines.append("▶️ Automática: activa")
     for k in watched_keys():
         lines.append(f"{MEM_PREFIX}{PRODUCTS[k]['label']}: {' y '.join(STORAGE[k])}")
+    lines.append(f"{SECONDS_PREFIX} cada {CONFIG['interval_seconds']} s")
     lines.append(f"{MILES_PREFIX} {CONFIG['max_miles']} mi de {CONFIG['origin']['name']} (en línea recta)")
     lines.append("📌 (este mensaje fijado guarda la configuración, no lo desfijes)")
     try:
@@ -370,14 +384,39 @@ def set_miles(arg: str) -> None:
     save_settings(header)
 
 
+def set_seconds(arg: str) -> None:
+    m = re.fullmatch(r"(\d+)\s*(s|seg|segundos)?", arg.strip())
+    if not m or not MIN_SECONDS <= int(m.group(1)) <= MAX_SECONDS:
+        notifier.reply(f"Poné un número de segundos entre {MIN_SECONDS} y {MAX_SECONDS}, por ejemplo: set segundos 45.")
+        return
+    secs = int(m.group(1))
+    if secs == CONFIG["interval_seconds"]:
+        notifier.reply(f"Ya estaba así: busco cada {secs} s.")
+        return
+    CONFIG["interval_seconds"] = secs
+    header = f"✅ Listo. Ahora busco cada {secs} s (±15%, para no ser regular)."
+    if secs < SAFE_SECONDS:
+        header += (
+            f"\n⚠️ Menos de {SAFE_SECONDS} s aumenta el riesgo de que Apple nos bloquee. "
+            "Si pasa, freno solo 5–20 min y te aviso si dura más de 30 min."
+        )
+    night = CONFIG["night"]
+    if secs < night["interval_seconds"]:
+        header += f"\n🌙 De {night['start_hour']} a {night['end_hour']} h (Argentina) sigue cada {night['interval_seconds'] // 60} min."
+    header += "\n(Se aplica desde el próximo chequeo.)"
+    save_settings(header)
+
+
 def settings_help() -> str:
     return (
         "⚙️ Configuración actual:\n"
         f"📱 {watch_desc()}\n"
-        f"📍 {area()} (en línea recta)\n\n"
+        f"📍 {area()} (en línea recta)\n"
+        f"⏱ cada {CONFIG['interval_seconds']} s\n\n"
         "Para cambiarla:\n"
         "• set memoria 256 / set memoria 512 / set memoria todos\n"
-        f"• set millas 100 (de {MIN_MILES} a {MAX_MILES})"
+        f"• set millas 100 (de {MIN_MILES} a {MAX_MILES})\n"
+        f"• set segundos 45 (de {MIN_SECONDS} a {MAX_SECONDS})"
     )
 
 
@@ -392,6 +431,10 @@ def load_settings() -> None:
         return
     STATE["paused"] = text.startswith(PAUSE_MARK) or PAUSED_LINE in text
     for line in text.splitlines():
+        if line.startswith(SECONDS_PREFIX):
+            m = re.search(r"\d+", line)
+            if m and MIN_SECONDS <= int(m.group()) <= MAX_SECONDS:
+                CONFIG["interval_seconds"] = int(m.group())
         if line.startswith(MILES_PREFIX):
             m = re.search(r"\d+", line)
             if m and MIN_MILES <= int(m.group()) <= MAX_MILES:
@@ -403,7 +446,7 @@ def load_settings() -> None:
                 mems = [m for m in mems_of(k) if m in found]
                 if mems:
                     STORAGE[k] = mems
-    print(f"{now()} paused={STATE['paused']} storage={STORAGE} max_miles={CONFIG['max_miles']}")
+    print(f"{now()} paused={STATE['paused']} storage={STORAGE} max_miles={CONFIG['max_miles']} interval={CONFIG['interval_seconds']}")
 
 
 def bot_commands() -> List[tuple]:
@@ -414,7 +457,7 @@ def bot_commands() -> List[tuple]:
         for mem in mems_of(k):
             cmds.append((f"set_memoria_{mem_num(mem)}", f"Automática: solo {PRODUCTS[k]['label']} {mem}"))
         cmds.append(("set_memoria_todos", f"Automática: {PRODUCTS[k]['label']} todas las memorias"))
-    cmds.append(("set", "Ver configuración (memoria y millas)"))
+    cmds.append(("set", "Ver configuración (memoria, millas, segundos)"))
     cmds += [
         ("estado", "Estado de la búsqueda"),
         ("pausa", "Pausar la búsqueda automática"),
@@ -496,6 +539,8 @@ def handle_command(text: str) -> None:
             set_storage(f"{watched_keys()[0]} {value}")
         elif what in ("millas", "milla", "mi", "distancia") and value:
             set_miles(value)
+        elif what in ("segundos", "segundo", "seg", "s", "frecuencia", "intervalo") and value:
+            set_seconds(value)
         else:
             notifier.reply(settings_help())
         return
@@ -563,6 +608,7 @@ def run(duration_min: float, interval: int) -> None:
     error_alert_sent = False
     backoff = CONFIG["block_backoff_minutes"]  # e.g. [5, 10, 20]: wait times while blocked
     STATE["run_started"] = time.time()
+    CONFIG["interval_seconds"] = interval  # --interval; "set segundos" (pinned) overrides it
     load_settings()
     if notifier.telegram_enabled():
         try:
@@ -579,9 +625,9 @@ def run(duration_min: float, interval: int) -> None:
         for k in [k for k in first_seen if k[1] not in parts]:
             first_seen.pop(k)
         if STATE["paused"]:
-            if time.time() + current_interval(interval) > deadline:
+            if time.time() + current_interval(CONFIG["interval_seconds"]) > deadline:
                 break
-            listener.wait(current_interval(interval))
+            listener.wait(current_interval(CONFIG["interval_seconds"]))
             continue
 
         items, checked, errors = apple_checker.check(CONFIG, parts)
@@ -638,9 +684,9 @@ def run(duration_min: float, interval: int) -> None:
                 notifier.notify(format_sold_out(gone, parts))
             notified &= current  # forget sold-out items so a restock notifies again
 
-        if time.time() + current_interval(interval) > deadline:
+        if time.time() + current_interval(CONFIG["interval_seconds"]) > deadline:
             break
-        listener.wait(current_interval(interval) * random.uniform(0.85, 1.15))  # irregular, ±15%
+        listener.wait(current_interval(CONFIG["interval_seconds"]) * random.uniform(0.85, 1.15))  # irregular, ±15%
 
 
 def main() -> None:

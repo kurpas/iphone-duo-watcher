@@ -13,9 +13,10 @@ Mientras corre, el bot responde en segundos (solo a tu chat):
 - `estado`: si está andando, cuántos chequeos lleva y el resultado del último
 - `set memoria 256` / `512` / `todos`: elige qué memorias del Duo busca la automática (por defecto: `watch_storage` en `config.json`)
 - `set millas 100`: descarta tiendas a más de esa distancia (5–120), en la automática y en `busca`. Responde qué tiendas quedan adentro y afuera
+- `set segundos 45`: cada cuántos segundos busca la automática (20–600; menos de 45 = más riesgo de bloqueo). De noche nunca busca más seguido que de día
 - `set`: muestra la configuración actual
 - `pausa` / `reanuda`: frena o retoma la búsqueda automática
-- La pausa, la memoria y las millas se guardan en el mensaje fijado del chat, así sobreviven a los reinicios. No lo desfijes.
+- La pausa, la memoria, las millas y los segundos se guardan en el mensaje fijado del chat, así sobreviven a los reinicios. No lo desfijes.
 - `prueba compra`: simula un aviso para practicar
 - `menu`: lista de comandos (también desde el botón ☰ Menú)
 - cualquier otro texto: "No entendí, escribí menu"
