@@ -42,12 +42,43 @@ def area() -> str:
     return f"tiendas a ≤{CONFIG['max_miles']} mi de {CONFIG['origin']['name']}"
 
 
+def part_mem(name: str) -> str:
+    m = NAME_RE.match(name)
+    return m["mem"] if m else ""
+
+
+def mems_of(key: str) -> List[str]:
+    """Storage options a product has, in config order (e.g. ['256GB', '512GB'])."""
+    out: List[str] = []
+    for name in PRODUCTS[key]["parts"].values():
+        mem = part_mem(name)
+        if mem and mem not in out:
+            out.append(mem)
+    return out
+
+
+def watched_keys() -> List[str]:
+    return [k for k, p in PRODUCTS.items() if p.get("watch")]
+
+
+# Storage the automatic watch looks for, per product. Changed from Telegram
+# ("activar busqueda duo 512") and persisted in the pinned chat message.
+STORAGE: Dict[str, List[str]] = {
+    k: [m for m in PRODUCTS[k].get("watch_storage", mems_of(k)) if m in mems_of(k)] or mems_of(k)
+    for k in watched_keys()
+}
+
+
 def watched_parts() -> Dict[str, str]:
     out: Dict[str, str] = {}
-    for p in PRODUCTS.values():
-        if p.get("watch"):
-            out.update(p["parts"])
+    for k in watched_keys():
+        out.update({part: n for part, n in PRODUCTS[k]["parts"].items() if part_mem(n) in STORAGE[k]})
     return out
+
+
+def watch_desc() -> str:
+    """e.g. 'iPhone Duo 256GB' or 'iPhone Duo 256GB y 512GB'."""
+    return ", ".join(f"{PRODUCTS[k]['label']} {' y '.join(STORAGE[k])}" for k in watched_keys())
 
 
 def buy_url(part: str) -> str:
@@ -161,10 +192,16 @@ def help_text(html: bool = True) -> str:
         return f"<b>{name.upper()}</b>" if html else name.upper()
 
     esc = escape if html else (lambda x: x)
-    watched = ", ".join(p["label"] for p in PRODUCTS.values() if p.get("watch"))
+    watched = watch_desc()
     lines = [cmd("📋 Menú"), ""]
     for key, p in PRODUCTS.items():
         lines.append(f"• {cmd('busca ' + key)} → busca ahora {esc(p['label'])}")
+    for key in watched_keys():
+        label = esc(PRODUCTS[key]["label"])
+        for mem in mems_of(key):
+            num = mem.replace("GB", "").replace("TB", "")
+            lines.append(f"• {cmd(f'activar busqueda {key} {num}')} → la automática busca solo {label} {mem}")
+        lines.append(f"• {cmd(f'activar busqueda {key} todos')} → la automática busca {label} de todas las memorias")
     lines += [
         f"• {cmd('prueba compra')} → simula un aviso para practicar la compra (no compra nada)",
         f"• {cmd('estado')} → muestra si la búsqueda está andando y el último chequeo",
@@ -209,7 +246,7 @@ def ago(ts: Optional[float]) -> str:
 
 
 def status_text() -> str:
-    watched = ", ".join(p["label"] for p in PRODUCTS.values() if p.get("watch"))
+    watched = watch_desc()
     if STATE["paused"]:
         head = f"{PAUSE_MARK} Búsqueda automática EN PAUSA (escribí reanuda para retomarla)"
     else:
@@ -219,10 +256,13 @@ def status_text() -> str:
     lines = ["📊 ESTADO", head]
     lines.append(f"⏱ Tanda actual: arrancó {ago(STATE['run_started'])} · {STATE['checks']} chequeos")
     if STATE["last_check"]:
-        result = (
-            f"✅ {STATE['last_available']} disponibles" if STATE["last_available"] else "sin stock"
-        )
-        lines.append(f"🕐 Último chequeo: {ago(STATE['last_check'])} · {STATE['last_stores']} tiendas · {result}")
+        if not STATE["last_stores"]:
+            detail = "sin respuesta de Apple"
+        elif STATE["last_available"]:
+            detail = f"{STATE['last_stores']} tiendas · ✅ {STATE['last_available']} disponibles"
+        else:
+            detail = f"{STATE['last_stores']} tiendas · sin stock"
+        lines.append(f"🕐 Último chequeo: {ago(STATE['last_check'])} · {detail}")
     if STATE["blocked_since"]:
         nxt = max(0, int((STATE["next_try"] or time.time()) - time.time()) // 60)
         lines.append(
@@ -232,30 +272,107 @@ def status_text() -> str:
     return "\n".join(lines)
 
 
+PAUSED_LINE = "Automática: EN PAUSA"
+MEM_PREFIX = "📱 Memoria "
+
+
+def save_settings(header: str) -> None:
+    """Settings survive restarts: they're stored in the chat's pinned message.
+    The message doubles as the confirmation the user sees."""
+    lines = [header, ""]
+    if STATE["paused"]:
+        lines.append(f"{PAUSE_MARK} {PAUSED_LINE} (escribí reanuda para retomarla)")
+    else:
+        lines.append(f"▶️ Automática: activa, cada {CONFIG['interval_seconds']} s")
+    for k in watched_keys():
+        lines.append(f"{MEM_PREFIX}{PRODUCTS[k]['label']}: {' y '.join(STORAGE[k])}")
+    lines.append("📌 (este mensaje fijado guarda la configuración, no lo desfijes)")
+    try:
+        notifier.unpin_all()
+        notifier.send_and_pin("\n".join(lines))
+    except Exception as exc:
+        print(f"{now()} [telegram] could not save settings: {type(exc).__name__}")
+        notifier.reply("\n".join(lines[:-1]) + "\n⚠️ No pude fijar el mensaje: si se reinicia, vuelve a lo de antes.")
+
+
 def set_paused(paused: bool) -> None:
     if paused == STATE["paused"]:
         notifier.reply("Ya está en pausa." if paused else "Ya está buscando.")
         return
     STATE["paused"] = paused
     if paused:
-        notifier.send_and_pin(
-            f"{PAUSE_MARK} Búsqueda automática EN PAUSA. Escribí reanuda para retomarla.\n"
-            "(busca duo / busca 18 siguen andando)"
-        )
+        save_settings(f"{PAUSE_MARK} Pausé la búsqueda automática. (busca duo / busca 18 siguen andando)")
     else:
-        notifier.unpin_all()
-        notifier.reply(f"▶️ Reanudada. Vuelvo a buscar cada {CONFIG['interval_seconds']} s.")
+        save_settings(f"▶️ Reanudada. Vuelvo a buscar {watch_desc()}.")
 
 
-def load_paused() -> None:
-    """Pause survives restarts: it's stored as the pinned message in the chat."""
+def set_storage(arg: str) -> None:
+    """'duo 256' / 'duo 512' / 'duo todos' -> which storage the automatic watch looks for."""
+    words = arg.split()
+    if len(words) < 2:
+        notifier.reply("Decime modelo y memoria, por ejemplo: activar busqueda duo 256 (o 512, o todos).")
+        return
+    key = find_product(" ".join(words[:-1]))
+    if not key:
+        notifier.reply("No conozco ese modelo 🤔 Escribí menu para ver los comandos.")
+        return
+    if key not in watched_keys():
+        notifier.reply(f"La búsqueda automática es solo para {', '.join(PRODUCTS[k]['label'] for k in watched_keys())}.")
+        return
+    opts = mems_of(key)
+    choice = words[-1].upper()
+    if choice in ("TODOS", "TODAS", "AMBOS", "AMBAS", "ALL"):
+        mems = opts
+    else:
+        mems = [m for m in opts if m in (choice, choice + "GB", choice + "TB")]
+    if not mems:
+        nums = " / ".join(m.replace("GB", "").replace("TB", "") for m in opts)
+        notifier.reply(f"Esa memoria no existe para {PRODUCTS[key]['label']}. Opciones: {nums} / todos.")
+        return
+    if mems == STORAGE[key]:
+        notifier.reply(f"Ya estaba así: la automática busca {watch_desc()}.")
+        return
+    STORAGE[key] = mems
+    save_settings(f"✅ Listo. La búsqueda automática ahora busca {watch_desc()}.")
+
+
+def load_settings() -> None:
+    """Reads pause + storage from the pinned message (older pins with only ⏸ still work)."""
     if not notifier.telegram_enabled():
         return
     try:
-        STATE["paused"] = notifier.pinned_text().startswith(PAUSE_MARK)
+        text = notifier.pinned_text()
     except Exception as exc:
         print(f"{now()} [telegram] could not read pinned message: {type(exc).__name__}")
-    print(f"{now()} paused={STATE['paused']}")
+        return
+    STATE["paused"] = text.startswith(PAUSE_MARK) or PAUSED_LINE in text
+    for line in text.splitlines():
+        for k in watched_keys():
+            prefix = f"{MEM_PREFIX}{PRODUCTS[k]['label']}:"
+            if line.startswith(prefix):
+                found = re.findall(r"\d+(?:GB|TB)", line[len(prefix):])
+                mems = [m for m in mems_of(k) if m in found]
+                if mems:
+                    STORAGE[k] = mems
+    print(f"{now()} paused={STATE['paused']} storage={STORAGE}")
+
+
+def bot_commands() -> List[tuple]:
+    """Shortcuts for Telegram's ☰ Menú button (underscores become spaces when handled)."""
+    cmds = [("menu", "Lista de comandos")]
+    cmds += [(f"busca_{k}", f"Buscar ahora {p['label']}") for k, p in PRODUCTS.items()]
+    for k in watched_keys():
+        for mem in mems_of(k):
+            num = mem.replace("GB", "").replace("TB", "")
+            cmds.append((f"activar_busqueda_{k}_{num}", f"Automática: solo {PRODUCTS[k]['label']} {mem}"))
+        cmds.append((f"activar_busqueda_{k}_todos", f"Automática: {PRODUCTS[k]['label']} todas las memorias"))
+    cmds += [
+        ("estado", "Estado de la búsqueda"),
+        ("pausa", "Pausar la búsqueda automática"),
+        ("reanuda", "Retomar la búsqueda automática"),
+        ("prueba_compra", "Simular un aviso para practicar"),
+    ]
+    return cmds
 
 
 def maybe_heartbeat() -> None:
@@ -320,6 +437,10 @@ def handle_command(text: str) -> None:
     if re.match(r"^/?(reanuda(r)?|segui|seguí)\b", t):
         set_paused(False)
         return
+    m = re.match(r"^/?activa(?:r)?\s+(?:la\s+)?(?:b[uú]squeda\s+)?(.*)$", t)
+    if m:
+        set_storage(m.group(1))
+        return
     m = re.match(r"^/?busca(?:r)?\b\s*(.*)$", t)
     if m:
         key = find_product(m.group(1))
@@ -380,10 +501,21 @@ def run(duration_min: float, interval: int) -> None:
     error_alert_sent = False
     backoff = CONFIG["block_backoff_minutes"]  # e.g. [5, 10, 20]: wait times while blocked
     STATE["run_started"] = time.time()
-    load_paused()
+    load_settings()
+    if notifier.telegram_enabled():
+        try:
+            notifier.set_commands(bot_commands())
+        except Exception as exc:
+            print(f"{now()} [telegram] could not set menu commands: {type(exc).__name__}")
 
     while True:
         maybe_heartbeat()
+        # Storage may have changed from Telegram: watch the new set, forget the rest
+        # silently (so dropping 512 doesn't produce a fake "sold out" message).
+        parts = watched_parts()
+        notified = {k for k in notified if k[1] in parts}
+        for k in [k for k in first_seen if k[1] not in parts]:
+            first_seen.pop(k)
         if STATE["paused"]:
             if time.time() + current_interval(interval) > deadline:
                 break

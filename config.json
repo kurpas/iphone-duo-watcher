@@ -7,6 +7,7 @@
         "iphone duo"
       ],
       "watch": true,
+      "watch_storage": ["256GB"],
       "url": "https://www.apple.com/shop/buy-iphone/iphone-duo",
       "parts": {
         "MK1E4LL/A": "iPhone Duo 256GB Star White",

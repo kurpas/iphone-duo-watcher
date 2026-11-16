@@ -1,6 +1,6 @@
 # iPhone Duo pickup watcher
 
-Revisa cada ~45 segundos si hay **iPhone Duo** (256GB o 512GB, Star White o Night Sky) disponible para **retiro en tienda** en los Apple Store a ≤120 millas de Delray Beach, FL, y avisa por WhatsApp y/o Telegram.
+Revisa cada ~45 segundos si hay **iPhone Duo** (por defecto 256GB; 512GB se activa desde Telegram; Star White o Night Sky) disponible para **retiro en tienda** en los Apple Store a ≤120 millas de Delray Beach, FL, y avisa por WhatsApp y/o Telegram.
 
 Usa el mismo servicio que consulta la página de Apple al apretar "Check availability" (`/shop/retail/pickup-message`). No compra ni reserva nada.
 
@@ -11,7 +11,9 @@ Mientras corre, el bot responde en segundos (solo a tu chat):
 - `busca duo`: iPhone Duo 256/512GB, Star White / Night Sky
 - `busca 18`: iPhone 18 Pro y Pro Max 256GB, todos los colores
 - `estado`: si está andando, cuántos chequeos lleva y el resultado del último
-- `pausa` / `reanuda`: frena o retoma la búsqueda automática. La pausa se guarda como mensaje fijado en el chat, así sobrevive a los reinicios
+- `activar busqueda duo 256` / `512` / `todos`: elige qué memorias busca la automática (por defecto: `watch_storage` en `config.json`)
+- `pausa` / `reanuda`: frena o retoma la búsqueda automática
+- La pausa y la memoria elegida se guardan en el mensaje fijado del chat, así sobreviven a los reinicios. No lo desfijes.
 - `prueba compra`: simula un aviso para practicar
 - `menu`: lista de comandos (también desde el botón ☰ Menú)
 - cualquier otro texto: "No entendí, escribí menu"

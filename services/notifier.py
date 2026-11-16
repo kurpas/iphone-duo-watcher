@@ -58,6 +58,12 @@ def pinned_text() -> str:
     return (res.get("result", {}).get("pinned_message") or {}).get("text", "")
 
 
+def set_commands(commands: List[tuple]) -> None:
+    """Sets the bot's ☰ Menú shortcuts: [(command, description), ...]."""
+    payload = [{"command": c, "description": d} for c, d in commands]
+    _telegram_api("setMyCommands", {"commands": json.dumps(payload)})
+
+
 def telegram_enabled() -> bool:
     return bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
 
