@@ -98,58 +98,47 @@ def buy_url(part: str) -> str:
     return ""
 
 
-def format_found(items: List[apple_checker.Availability], parts: Dict[str, str]) -> str:
-    """Groups availability by model; nearest stores + direct buy link per model."""
-    n = CONFIG["stores_per_model_in_message"]
-    by_part: "OrderedDict[str, list]" = OrderedDict((p, []) for p in parts)
-    for a in items:
-        by_part.setdefault(a.part, []).append(a)
-
-    lines = ["✅ DISPONIBLE para pickup:"]
-    for part, stores in by_part.items():
-        if not stores:
-            continue
-        stores.sort(key=lambda a: a.miles)
-        shown = ", ".join(f"{a.store_name} ({a.miles:.0f} mi)" for a in stores[:n])
-        more = f" y {len(stores) - n} más" if len(stores) > n else ""
-        lines.append(f"\n• {split_name(parts.get(part, part))}: {shown}{more}")
-        lines.append(f"  👉 {buy_url(part)}")
-    missing = [split_name(parts[p]) for p, s in by_part.items() if not s and p in parts]
-    if missing:
-        lines.append("\n❌ Sin stock:")
-        lines += [f"• {m}" for m in missing]
-    return "\n".join(lines)
+def short_name(name: str, parts: Dict[str, str]) -> str:
+    """'iPhone Duo 256GB Star White' -> 'Star White · 256GB' when every part is the same model
+    (Duo); keeps the model when it matters (18 Pro vs 18 Pro Max)."""
+    m = NAME_RE.match(name)
+    models = {(NAME_RE.match(n) or {"model": n})["model"] for n in parts.values()}
+    if not m or len(models) > 1:
+        return split_name(name)
+    return f"{m['color']} · {m['mem']}"
 
 
 def format_headline(items: List[apple_checker.Availability], parts: Dict[str, str]) -> str:
-    """Short first message: what shows on the phone's lock screen. Nearest store wins."""
-    a = min(items, key=lambda x: x.miles)
-    quote = f" · {a.quote}" if a.quote else ""
-    lines = [
-        f"🚨 HAY STOCK: {split_name(parts.get(a.part, a.part))}",
-        f"📍 {a.store_name} ({a.miles:.0f} mi){quote}",
-        f"👉 {buy_url(a.part)}",
-        f"Add to Bag → Check Out → pickup en {a.store_name} → tarjeta guardada.",
-    ]
+    """First message, no link: what shows on the lock screen."""
+    found = [p for p in parts if any(a.part == p for a in items)]
+    found += sorted({a.part for a in items} - set(found))
+    return "🚨 HAY STOCK: " + " y ".join(
+        split_name(parts.get(p, p)) if i == 0 else short_name(parts.get(p, p), parts) for i, p in enumerate(found)
+    )
 
-    # Plan B: same model in other stores (go back ONE step, don't start over).
-    same = sorted((x for x in items if x.part == a.part and x is not a), key=lambda x: x.miles)
-    plan_b = "\n🔁 Si da error al pagar: NO empieces de nuevo. Volvé un paso atrás y probá otro horario"
-    if same:
-        plan_b += " u otra tienda: " + ", ".join(f"{x.store_name} ({x.miles:.0f} mi)" for x in same[:3])
-    lines.append(plan_b + ".")
 
-    # Other variants (color / storage) available right now, nearest store each.
-    nearest: Dict[str, apple_checker.Availability] = {}
-    for x in sorted(items, key=lambda x: x.miles):
-        if x.part != a.part:
-            nearest.setdefault(x.part, x)
-    if nearest:
-        lines.append("\n➕ También hay:")
-        for x in nearest.values():
-            lines.append(f"• {split_name(parts.get(x.part, x.part))} en {x.store_name} ({x.miles:.0f} mi)")
-            lines.append(f"  👉 {buy_url(x.part)}")
-    return "\n".join(lines)
+def format_stores(items: List[apple_checker.Availability], parts: Dict[str, str]) -> List[str]:
+    """One message per store (nearest first, capped), each with every variant in stock there."""
+    by_store: "OrderedDict[str, list]" = OrderedDict()
+    for a in sorted(items, key=lambda x: x.miles):
+        by_store.setdefault(a.store_number, []).append(a)
+    order = {p: i for i, p in enumerate(parts)}
+    msgs = []
+    for stock in list(by_store.values())[: CONFIG["max_store_messages"]]:
+        first = stock[0]
+        quote = f" · {first.quote}" if first.quote else ""
+        lines = [f"📍 {first.store_name} ({first.miles:.0f} mi){quote}"]
+        for a in sorted(stock, key=lambda x: order.get(x.part, 99)):
+            lines += [f"• {short_name(parts.get(a.part, a.part), parts)}", f"👉 {buy_url(a.part)}"]
+        msgs.append("\n".join(lines))
+    rest = list(by_store.values())[CONFIG["max_store_messages"]:]
+    if rest:
+        msgs[-1] += "\n\n➕ También en: " + ", ".join(f"{x[0].store_name} ({x[0].miles:.0f} mi)" for x in rest)
+    return msgs
+
+
+def alert_messages(items: List[apple_checker.Availability], parts: Dict[str, str], prefix: str = "") -> List[str]:
+    return [prefix + format_headline(items, parts)] + format_stores(items, parts)
 
 
 def fmt_duration(seconds: float) -> str:
@@ -172,10 +161,12 @@ def format_sold_out(gone: List[tuple], parts: Dict[str, str]) -> str:
 
 
 def send_alert(items: List[apple_checker.Availability], parts: Dict[str, str], prefix: str = "") -> bool:
-    """Two messages: actionable headline first, full detail after."""
-    ok = notifier.notify(prefix + format_headline(items, parts))
+    """🚨 headline first (no link), then one message per store."""
+    msgs = alert_messages(items, parts, prefix)
+    ok = notifier.notify(msgs[0])
     if ok:
-        notifier.notify(format_found(items, parts))
+        for m in msgs[1:]:
+            notifier.notify(m)
     return ok
 
 
@@ -462,7 +453,10 @@ def on_demand_search(key: str) -> None:
         notifier.reply("⚠️ No pude consultar a Apple ahora. Probá de nuevo en un rato.")
         return
     if items:
-        notifier.reply(format_found(items, parts) + f"\n\n(revisé {checked} tiendas)")
+        msgs = alert_messages(items, parts)
+        msgs[0] += f"\n(revisé {checked} tiendas)"
+        for m in msgs:
+            notifier.reply(m)
     else:
         notifier.reply(f"❌ No hay stock de ninguno en las {checked} tiendas.")
 
@@ -476,7 +470,7 @@ def practice_alert() -> None:
         return
     send_alert(items, parts, prefix="🧪 PRUEBA (no es el Duo, NO pagues)\n")
     notifier.reply(
-        "🧪 Practicá: tocá el link del primer mensaje, elegí la tienda para pickup y avanzá "
+        "🧪 Practicá: tocá el link de la tienda más cercana, elegí esa tienda para pickup y avanzá "
         "hasta la pantalla final de pago (Place Order) SIN confirmar. Fijate cuánto tardaste."
     )
 
@@ -630,7 +624,9 @@ def run(duration_min: float, interval: int) -> None:
         current = {a.key for a in items}
         new_items = [a for a in items if a.key not in notified]
         print(f"{now()} checked {checked} stores, available: {len(items)}, new: {len(new_items)}")
-        if new_items and send_alert(items, parts):
+        # Only stores with something new get a message (with everything in stock there).
+        new_stores = {a.store_number for a in new_items}
+        if new_items and send_alert([a for a in items if a.store_number in new_stores], parts):
             notified |= {a.key for a in new_items}
 
         if checked > 0:  # only trust "disappeared" when Apple actually answered
@@ -671,7 +667,7 @@ def main() -> None:
             print(f"[error] {e}")
         print(f"Checked {checked} stores. Available: {len(items)}")
         if items:
-            print(format_found(items, parts))
+            print("\n\n".join(alert_messages(items, parts)))
         return
 
     run(args.duration or 60, args.interval)

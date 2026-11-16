@@ -26,14 +26,16 @@ Primero responde qué modelos va a buscar y después el resultado. Los productos
 
 ## Cómo comprar cuando llega el aviso (compra asistida)
 
-No se automatiza login, carrito ni pago, y no se guarda ningún dato sensible. El aviso llega en 2 mensajes:
+No se automatiza login, carrito ni pago, y no se guarda ningún dato sensible. El aviso llega así:
 
-1. **Arriba:** modelo, tienda más cercana y link directo, con color y memoria ya elegidos (unlocked).
-2. **Abajo:** detalle de todos los modelos y tiendas con stock, cada uno con su link.
+1. **🚨 HAY STOCK: modelo · color · memoria**: corto, sin link (es el que suena y se ve en la pantalla bloqueada).
+2. **Un mensaje por tienda** (📍 nombre, millas, cuándo se retira), de la más cercana a la más lejana, con cada variante disponible ahí y su link directo (unlocked). Como máximo 4 (`max_store_messages`); el resto va en "➕ También en".
 
-Pasos: tocar el link → Add to Bag → Check Out → elegir **pickup** en la tienda del aviso → pagar con la **tarjeta guardada** en la cuenta Apple (puede pedir CVV).
+Si aparece stock en una tienda nueva mientras otra sigue con stock, solo llega el aviso de la nueva. `busca duo` / `busca 18` responden con el mismo formato.
 
-Apple **no reserva** la unidad en la bolsa: se asigna recién al tocar *Place Order*. Si alguien paga antes, sale *"The delivery and pickup option you have chosen is no longer available"*. En ese caso **no empieces de nuevo**: volvé un paso atrás y probá otro horario u otra de las tiendas que lista el aviso (🔁 plan B). Si aparece otra variante, el aviso también la muestra (➕).
+Pasos: tocar el link → Add to Bag → Check Out → elegir **pickup** en la tienda del aviso → pagar con la **tarjeta guardada** en la cuenta Apple (puede pedir CVV). El link es el mismo para todas las tiendas: la tienda se elige en el checkout.
+
+Apple **no reserva** la unidad en la bolsa: se asigna recién al tocar *Place Order*. Si alguien paga antes, sale *"The delivery and pickup option you have chosen is no longer available"*. En ese caso volvé un paso atrás y probá otro horario u otra de las tiendas del aviso.
 
 Cuando el stock desaparece llega `⌛ Se agotó … duró ~X` (precisión ± el intervalo de chequeo). Sirve para saber cuánto tiempo hay de verdad.
 
