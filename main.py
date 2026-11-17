@@ -82,12 +82,18 @@ MIN_MILES, MAX_MILES = 5, 120  # Apple only returns stores up to ~120 mi from th
 
 
 def mem_num(mem: str) -> str:
-    return mem.replace("GB", "").replace("TB", "")
+    """'256GB' -> '256', '1TB' -> '1tb' (what the user types after 'set memoria')."""
+    return mem.replace("GB", "") if mem.endswith("GB") else mem.lower()
+
+
+def join_y(items: List[str]) -> str:
+    """['a', 'b', 'c'] -> 'a, b y c'."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " y " + items[-1]
 
 
 def watch_desc() -> str:
     """e.g. 'iPhone Duo 256GB' or 'iPhone Duo 256GB y 512GB'."""
-    return ", ".join(f"{PRODUCTS[k]['label']} {' y '.join(STORAGE[k])}" for k in watched_keys())
+    return ", ".join(f"{PRODUCTS[k]['label']} {join_y(STORAGE[k])}" for k in watched_keys())
 
 
 def buy_url(part: str) -> str:
@@ -206,7 +212,8 @@ def help_text(html: bool = True) -> str:
         label = esc(PRODUCTS[key]["label"])
         for mem in mems_of(key):
             lines.append(f"• {cmd('set memoria ' + mem_num(mem))} → la automática busca solo {label} {mem}")
-        lines.append(f"• {cmd('set memoria todos')} → la automática busca {label} de todas las memorias")
+        nums = ", ".join(mem_num(m).upper() for m in mems_of(key))
+        lines.append(f"• {cmd('set memoria todos')} → la automática busca {label} de todas las memorias ({nums})")
     lines.append(
         f"• {cmd('set millas 100')} → descarta tiendas a más de 100 mi (o el número que pongas, "
         f"{MIN_MILES}–{MAX_MILES}); vale para todas las búsquedas"
@@ -301,7 +308,7 @@ def save_settings(header: str) -> None:
     else:
         lines.append("▶️ Automática: activa")
     for k in watched_keys():
-        lines.append(f"{MEM_PREFIX}{PRODUCTS[k]['label']}: {' y '.join(STORAGE[k])}")
+        lines.append(f"{MEM_PREFIX}{PRODUCTS[k]['label']}: {join_y(STORAGE[k])}")
     lines.append(f"{SECONDS_PREFIX} cada {CONFIG['interval_seconds']} s")
     lines.append(f"{MILES_PREFIX} {CONFIG['max_miles']} mi de {CONFIG['origin']['name']} (en línea recta)")
     lines.append("📌 (este mensaje fijado guarda la configuración, no lo desfijes)")
@@ -344,7 +351,7 @@ def set_storage(arg: str) -> None:
     else:
         mems = [m for m in opts if m in (choice, choice + "GB", choice + "TB")]
     if not mems:
-        nums = " / ".join(m.replace("GB", "").replace("TB", "") for m in opts)
+        nums = " / ".join(mem_num(m) for m in opts)
         notifier.reply(f"Esa memoria no existe para {PRODUCTS[key]['label']}. Opciones: {nums} / todos.")
         return
     if mems == STORAGE[key]:
@@ -414,7 +421,7 @@ def settings_help() -> str:
         f"📍 {area()} (en línea recta)\n"
         f"⏱ cada {CONFIG['interval_seconds']} s\n\n"
         "Para cambiarla:\n"
-        "• set memoria 256 / set memoria 512 / set memoria todos\n"
+        "• set memoria " + " / ".join(mem_num(m) for k in watched_keys() for m in mems_of(k)) + " / todos\n"
         f"• set millas 100 (de {MIN_MILES} a {MAX_MILES})\n"
         f"• set segundos 45 (de {MIN_SECONDS} a {MAX_SECONDS})"
     )

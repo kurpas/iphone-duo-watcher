@@ -1,6 +1,6 @@
 # iPhone Duo pickup watcher
 
-Revisa cada ~45 segundos si hay **iPhone Duo** (por defecto 256GB; 512GB se activa desde Telegram; Star White o Night Sky) disponible para **retiro en tienda** en los Apple Store a ≤120 millas de Delray Beach, FL, y avisa por WhatsApp y/o Telegram.
+Revisa cada ~45 segundos si hay **iPhone Duo** (por defecto 256GB; 512GB, 1TB y 2TB se activan desde Telegram; Star White o Night Sky) disponible para **retiro en tienda** en los Apple Store a ≤120 millas de Delray Beach, FL, y avisa por WhatsApp y/o Telegram.
 
 Usa el mismo servicio que consulta la página de Apple al apretar "Check availability" (`/shop/retail/pickup-message`). No compra ni reserva nada.
 
@@ -11,7 +11,7 @@ Mientras corre, el bot responde en segundos (solo a tu chat):
 - `busca duo`: iPhone Duo 256/512GB, Star White / Night Sky
 - `busca 18`: iPhone 18 Pro y Pro Max 256GB, todos los colores
 - `estado`: si está andando, cuántos chequeos lleva y el resultado del último
-- `set memoria 256` / `512` / `todos`: elige qué memorias del Duo busca la automática (por defecto: `watch_storage` en `config.json`)
+- `set memoria 256` / `512` / `1tb` / `2tb` / `todos`: elige qué memorias del Duo busca la automática (por defecto: `watch_storage` en `config.json`)
 - `set millas 100`: descarta tiendas a más de esa distancia (5–120), en la automática y en `busca`. Responde qué tiendas quedan adentro y afuera
 - `set segundos 45`: cada cuántos segundos busca la automática (20–600; menos de 45 = más riesgo de bloqueo). De noche nunca busca más seguido que de día
 - `set`: muestra la configuración actual
@@ -75,4 +75,3 @@ La distancia es en **línea recta** desde Delray Beach; manejando suele ser un 1
 
 
 - Agregar Orlando (~2h45 manejando): `max_miles` → `165`
-- Agregar 1TB: sumar `MK1J4LL/A` y `MK1L4LL/A` en `parts`

@@ -13,13 +13,21 @@
         "MK1E4LL/A": "iPhone Duo 256GB Star White",
         "MK1F4LL/A": "iPhone Duo 256GB Night Sky",
         "MK1G4LL/A": "iPhone Duo 512GB Star White",
-        "MK1H4LL/A": "iPhone Duo 512GB Night Sky"
+        "MK1H4LL/A": "iPhone Duo 512GB Night Sky",
+        "MK1J4LL/A": "iPhone Duo 1TB Star White",
+        "MK1L4LL/A": "iPhone Duo 1TB Night Sky",
+        "MK1Q4LL/A": "iPhone Duo 2TB Star White",
+        "MK1R4LL/A": "iPhone Duo 2TB Night Sky"
       },
       "buy_slugs": {
         "MK1E4LL/A": "7.6-inch-display-256gb-star-white-unlocked",
         "MK1F4LL/A": "7.6-inch-display-256gb-night-sky-unlocked",
         "MK1G4LL/A": "7.6-inch-display-512gb-star-white-unlocked",
-        "MK1H4LL/A": "7.6-inch-display-512gb-night-sky-unlocked"
+        "MK1H4LL/A": "7.6-inch-display-512gb-night-sky-unlocked",
+        "MK1J4LL/A": "7.6-inch-display-1tb-star-white-unlocked",
+        "MK1L4LL/A": "7.6-inch-display-1tb-night-sky-unlocked",
+        "MK1Q4LL/A": "7.6-inch-display-2tb-star-white-unlocked",
+        "MK1R4LL/A": "7.6-inch-display-2tb-night-sky-unlocked"
       }
     },
     "18": {
