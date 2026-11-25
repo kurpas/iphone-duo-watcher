@@ -234,7 +234,7 @@ def help_text(html: bool = True) -> str:
         f"🤖 Automático: busco {esc(watched)} cada {CONFIG['interval_seconds']} s y te aviso solo si hay stock.",
         f"🌙 De {CONFIG['night']['start_hour']} a {CONFIG['night']['end_hour']} h (Argentina): cada {night_every()}.",
         f"📍 Solo pickup en {esc(area())}.",
-        f"☀️ Todos los días a las {CONFIG['heartbeat_hour']} h (Argentina) te mando un \"sigo vivo\".",
+        f"☀️ Todos los días a las {CONFIG['heartbeat_hour']} h (Argentina) te mando un \"sigo vivo\" (en pausa no).",
     ]
     return "\n".join(lines)
 
@@ -475,7 +475,9 @@ def bot_commands() -> List[tuple]:
 
 
 def maybe_heartbeat() -> None:
-    """One 'still alive' message per day, in the first minutes of heartbeat_hour."""
+    """One 'still alive' message per day, in the first minutes of heartbeat_hour. Silent while paused."""
+    if STATE["paused"]:
+        return
     local = datetime.now(ZoneInfo(CONFIG["night"]["timezone"]))
     today = local.date().isoformat()
     if local.hour == CONFIG["heartbeat_hour"] and local.minute < 10 and STATE["heartbeat_date"] != today:
